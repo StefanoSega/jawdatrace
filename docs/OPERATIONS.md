@@ -32,23 +32,35 @@ Some actions cost one request per Test:
 - Adding Tests to a **Test Set** creates one Jira link per Test, because Jira has no bulk link-create endpoint. This is capped at 100 per click.
 - Adding Tests to a Plan or Execution is a single batched insert.
 
-## Baseline (to record after the first install)
+## Baseline
 
-On the dev site, run the end-to-end scenario from the plan:
-- 4 Tests
-- 1 Test Set
-- 1 Story
-- 1 Plan with 2 Executions
-- about 10 runs
+Recorded on **2026-10-15** from the developer console (environment **development**, site `techstarter-test.atlassian.net`, one installation, one user). It covers the first install and the full end-to-end check:
+- setup (issue types and link types)
+- 4 Tests, 1 Test Set, 1 Story, and 1 Test Plan with 2 Test Executions
+- 10 runs (8 Pass, 1 Fail with evidence, 1 Start/Executing)
+- browsing every panel and the coverage report several times
+- re-checks after four bug-fix redeploys
 
-Then copy these numbers from the developer console:
+All usage is from that one day, because the app was first installed then.
 
-| Metric | Value | Date |
+| Metric | Value | Console page |
 |---|---|---|
-| Function invocations | | |
-| Total duration (GB-s) | | |
-| Forge SQL requests | | |
-| Jira API requests (approx., from the table above) | | |
+| Function invocations | **29** (0 errors, 100% success) | Invocation metrics, Development, last 24 h |
+| Invocation response time | P50 **675 ms**, P90 1,590 ms, P95 1,815 ms | Invocation metrics |
+| Functions compute | **10.77 GB-s** (about 0.37 GB-s per invocation at 256 MB) of 200,000 GB-s included per month | Usage and charges |
+| Forge SQL requests | **106** (about 3.7 per invocation) of 100,000 included | Usage and charges |
+| Forge SQL compute | **0.0008 h** of 1 h included | Usage and charges |
+| Forge SQL storage | 0 GB-hours (rounds to zero) | Usage and charges |
+| Outbound API requests from functions | **81**, all 2xx | API metrics, Development, last 24 h |
+| Key-value store, object store, LLM, containers | 0 (not used) | Usage and charges |
+| Extra charges | **$0** | Usage and charges |
+
+How to read these numbers:
+- **Not every resolver call is an invocation.** A Forge invocation is one function execution. Errors that resolvers return as `{ ok: false }`, such as the `getRuns` failure found during testing, count as successful invocations, so watch for them in the UI and with the `[jawdatrace] … failed` log line.
+- **Browser requests aren't counted.** Jira requests made from the browser with `requestJira` (loading steps, links, JQL searches, creating links) aren't function invocations and don't appear in "API metrics". That traffic is why opening a panel usually costs only 0–1 invocations.
+- **SQL requests per invocation:** about 3.7 is above the 1–3 per view in the cost model. It includes the migration runner checking which migrations have run each time a new runtime starts, plus the data setup during testing. Re-measure on a steady-state week before drawing conclusions.
+- **Console lag:** usage data can be up to an hour behind, so activity in the last hour before 19:55 UTC may be missing.
+- **Monthly runway:** at this rate a single active tester stays far below every free allowance, with compute about 0.005% and SQL requests about 0.1% of the monthly inclusion. Re-baseline once real teams use the app, and compare against the cost-per-view table above.
 
 ## Data retention, deletion and export
 
