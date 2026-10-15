@@ -1,0 +1,382 @@
+/**
+ * All SQL used by the app, in one place.
+ *
+ * Every query is parameterised (`?` placeholders + bindParams). Dynamic parts
+ * are limited to the NUMBER of placeholders for IN (…) lists; the values
+ * themselves are always bound, never concatenated.
+ *
+ * Callers (resolvers) are responsible for authorization BEFORE calling these.
+ */
+import sql from '@forge/sql';
+import { DATA_SCHEMA_VERSION, RUN_STATUS } from '../shared/constants';
+
+/** "?, ?, ?" for an IN (…) list. */
+export function placeholders(count) {
+  return new Array(count).fill('?').join(', ');
+}
+
+/** A safe integer for an inlined LIMIT clause (1..1000). */
+export function toLimit(value) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 1 || number > 1000) throw new Error('Invalid LIMIT value');
+  return number;
+}
+
+/** JS Date -> 'YYYY-MM-DD HH:MM:SS.mmm' (UTC) for DATETIME(3) columns. */
+export function toSqlDateTime(date = new Date()) {
+  return date.toISOString().replace('T', ' ').replace('Z', '');
+}
+
+/** SQL DATETIME string (UTC) -> ISO-8601 string for the UI. */
+export function fromSqlDateTime(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  const text = String(value);
+  return text.includes('T') ? text : `${text.replace(' ', 'T')}Z`;
+}
+
+async function query(statement, params = []) {
+  const prepared = sql.prepare(statement);
+  const result = await (params.length ? prepared.bindParams(...params) : prepared).execute();
+  return result.rows;
+}
+
+// ---------------------------------------------------------------------------
+// Test runs
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert a run. Idempotent per (test_issue_id, client_request_id): a repeated
+ * submission of the same form is ignored, and the existing row is returned.
+ *
+ * @returns {Promise<{ inserted: boolean }>}
+ */
+export async function insertRun(run) {
+  const result = await query(
+    `INSERT IGNORE INTO test_run
+       (id, test_issue_id, execution_issue_id, status, comment, evidence, steps_revision,
+        executed_by, executed_at, client_request_id, schema_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      run.id,
+      run.testIssueId,
+      run.executionIssueId ?? null,
+      run.status,
+      run.comment ?? null,
+      JSON.stringify(run.evidence),
+      run.stepsRevision ?? null,
+      run.executedBy,
+      toSqlDateTime(run.executedAt),
+      run.clientRequestId,
+      DATA_SCHEMA_VERSION,
+    ]
+  );
+  return { inserted: (result?.affectedRows ?? 0) > 0 };
+}
+
+/**
+ * One page of a Test's run history, newest first (keyset pagination).
+ * Joins the execution so the UI can show which Execution/environment it ran in.
+ *
+ * @param {string} testIssueId
+ * @param {{ executedAt: string, id: string } | null} cursor - last row of the previous page
+ * @param {number} pageSize
+ */
+export async function selectRunsPage(testIssueId, cursor, pageSize) {
+  const params = [testIssueId];
+  let cursorClause = '';
+  if (cursor) {
+    cursorClause = 'AND (r.executed_at < ? OR (r.executed_at = ? AND r.id < ?))';
+    params.push(cursor.executedAt, cursor.executedAt, cursor.id);
+  }
+  // Fetch one extra row to know whether another page exists. LIMIT is inlined
+  // as a validated integer: Forge SQL rejects a bound `LIMIT ?` parameter.
+  const limit = toLimit(pageSize + 1);
+  return query(
+    `SELECT r.id, r.status, r.comment, r.evidence, r.steps_revision, r.executed_by,
+            r.executed_at, r.execution_issue_id, e.environment
+       FROM test_run r
+       LEFT JOIN test_execution e ON e.execution_issue_id = r.execution_issue_id
+      WHERE r.test_issue_id = ? ${cursorClause}
+      ORDER BY r.executed_at DESC, r.id DESC
+      LIMIT ${limit}`,
+    params
+  );
+}
+
+/**
+ * Latest runs per Test AND ENVIRONMENT for a scope, in ONE statement.
+ *
+ * For every requested Test and every environment it ran in, it returns up to
+ * two rows:
+ *   - the newest run of any status   (rn_any = 1)
+ *   - the newest FINAL run           (rn_final = 1, status <> EXECUTING)
+ * The caller resolves each environment with resolveDisplayStatus() (so a
+ * freshly started re-run shows as EXECUTING) and then combines environments
+ * with combineEnvironmentStatuses() (so a failure on iOS isn't hidden by a
+ * later pass on Android). Ad-hoc runs (no execution) form their own bucket.
+ *
+ * @param {string[]} testIssueIds - already permission-filtered
+ * @param {{ kind: 'latest' | 'plan' | 'execution', id?: string, environment?: string }} scope
+ */
+export async function selectLatestRuns(testIssueIds, scope) {
+  if (testIssueIds.length === 0) return [];
+  const params = [...testIssueIds];
+  let scopeWhere = '';
+  if (scope.kind === 'execution') {
+    scopeWhere = 'AND r.execution_issue_id = ?';
+    params.push(scope.id);
+  } else if (scope.kind === 'plan') {
+    scopeWhere = 'AND e.plan_issue_id = ?';
+    params.push(scope.id);
+    if (scope.environment) {
+      scopeWhere += ' AND e.environment = ?';
+      params.push(scope.environment);
+    }
+  }
+  return query(
+    `SELECT test_issue_id, env, status, executed_at, executed_by, rn_any, rn_final
+       FROM (
+         SELECT r.test_issue_id, COALESCE(e.environment, '') AS env, r.status, r.executed_at, r.executed_by,
+                ROW_NUMBER() OVER (PARTITION BY r.test_issue_id, COALESCE(e.environment, '')
+                                   ORDER BY r.executed_at DESC, r.id DESC) AS rn_any,
+                ROW_NUMBER() OVER (PARTITION BY r.test_issue_id, COALESCE(e.environment, ''),
+                                                (r.status = '${RUN_STATUS.EXECUTING}')
+                                   ORDER BY r.executed_at DESC, r.id DESC) AS rn_final
+           FROM test_run r
+           LEFT JOIN test_execution e ON e.execution_issue_id = r.execution_issue_id
+          WHERE r.test_issue_id IN (${placeholders(testIssueIds.length)}) ${scopeWhere}
+       ) ranked
+      WHERE rn_any = 1 OR (rn_final = 1 AND status <> '${RUN_STATUS.EXECUTING}')`,
+    params
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Test executions
+// ---------------------------------------------------------------------------
+
+export async function selectExecution(executionIssueId) {
+  const rows = await query(
+    `SELECT execution_issue_id, project_id, plan_issue_id, environment, created_by, created_at
+       FROM test_execution WHERE execution_issue_id = ?`,
+    [executionIssueId]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Create the execution row only if it is missing; never overwrites plan or
+ * environment. Used when Tests are added to an Execution that was created
+ * with Jira's native "Create" button (so the app has no row for it yet).
+ */
+export async function ensureExecution({ executionIssueId, projectId, createdBy }) {
+  await query(
+    `INSERT IGNORE INTO test_execution
+       (execution_issue_id, project_id, plan_issue_id, environment, created_by, created_at, schema_version)
+     VALUES (?, ?, NULL, NULL, ?, ?, ?)`,
+    [executionIssueId, projectId, createdBy, toSqlDateTime(), DATA_SCHEMA_VERSION]
+  );
+}
+
+/** True when the Test is a member of the Execution. */
+export async function isTestInExecution(executionIssueId, testIssueId) {
+  const rows = await query(
+    'SELECT 1 AS found FROM execution_test WHERE execution_issue_id = ? AND test_issue_id = ? LIMIT 1',
+    [executionIssueId, testIssueId]
+  );
+  return rows.length > 0;
+}
+
+/** Create or update the execution row (sets plan and environment). */
+export async function upsertExecution({ executionIssueId, projectId, planIssueId, environment, createdBy }) {
+  await query(
+    `INSERT INTO test_execution
+       (execution_issue_id, project_id, plan_issue_id, environment, created_by, created_at, schema_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE plan_issue_id = VALUES(plan_issue_id), environment = VALUES(environment)`,
+    [
+      executionIssueId,
+      projectId,
+      planIssueId ?? null,
+      environment ?? null,
+      createdBy,
+      toSqlDateTime(),
+      DATA_SCHEMA_VERSION,
+    ]
+  );
+}
+
+export async function selectExecutionTests(executionIssueId) {
+  return query(
+    `SELECT test_issue_id, sort_order FROM execution_test
+      WHERE execution_issue_id = ? ORDER BY sort_order, test_issue_id`,
+    [executionIssueId]
+  );
+}
+
+/** Append Tests to an execution, keeping existing order; duplicates are ignored. */
+export async function insertExecutionTests(executionIssueId, testIssueIds) {
+  if (testIssueIds.length === 0) return;
+  const [{ max_order: maxOrder } = {}] = await query(
+    'SELECT MAX(sort_order) AS max_order FROM execution_test WHERE execution_issue_id = ?',
+    [executionIssueId]
+  );
+  const start = Number(maxOrder ?? 0);
+  const now = toSqlDateTime();
+  const values = [];
+  testIssueIds.forEach((testId, index) => {
+    values.push(executionIssueId, testId, start + index + 1, now);
+  });
+  await query(
+    `INSERT IGNORE INTO execution_test (execution_issue_id, test_issue_id, sort_order, added_at)
+     VALUES ${testIssueIds.map(() => '(?, ?, ?, ?)').join(', ')}`,
+    values
+  );
+}
+
+export async function deleteExecutionTests(executionIssueId, testIssueIds) {
+  if (testIssueIds.length === 0) return;
+  await query(
+    `DELETE FROM execution_test
+      WHERE execution_issue_id = ? AND test_issue_id IN (${placeholders(testIssueIds.length)})`,
+    [executionIssueId, ...testIssueIds]
+  );
+}
+
+/** Executions of a plan with per-status counts, in one statement. */
+export async function selectPlanExecutionsWithCounts(planIssueId) {
+  return query(
+    `SELECT e.execution_issue_id, e.environment, e.created_at,
+            COUNT(et.test_issue_id) AS total
+       FROM test_execution e
+       LEFT JOIN execution_test et ON et.execution_issue_id = e.execution_issue_id
+      WHERE e.plan_issue_id = ?
+      GROUP BY e.execution_issue_id, e.environment, e.created_at
+      ORDER BY e.created_at DESC`,
+    [planIssueId]
+  );
+}
+
+/**
+ * Latest run status per (execution, test) for all executions of a plan, used
+ * to compute each execution's progress bar without one query per execution.
+ */
+export async function selectPlanExecutionStatuses(planIssueId) {
+  return query(
+    `SELECT execution_issue_id, test_issue_id, status FROM (
+       SELECT r.execution_issue_id, r.test_issue_id, r.status,
+              ROW_NUMBER() OVER (PARTITION BY r.execution_issue_id, r.test_issue_id
+                                 ORDER BY r.executed_at DESC, r.id DESC) AS rn
+         FROM test_run r
+         JOIN test_execution e ON e.execution_issue_id = r.execution_issue_id
+         JOIN execution_test et ON et.execution_issue_id = r.execution_issue_id
+                               AND et.test_issue_id = r.test_issue_id
+        WHERE e.plan_issue_id = ?
+     ) ranked WHERE rn = 1`,
+    [planIssueId]
+  );
+}
+
+/** Distinct environments used in a project (for suggestions). */
+export async function selectEnvironments(projectId) {
+  const rows = await query(
+    `SELECT DISTINCT environment FROM test_execution
+      WHERE project_id = ? AND environment IS NOT NULL AND environment <> ''
+      ORDER BY environment LIMIT 50`,
+    [projectId]
+  );
+  return rows.map((row) => row.environment);
+}
+
+// ---------------------------------------------------------------------------
+// Test plans
+// ---------------------------------------------------------------------------
+
+/** Plan members plus how many of the plan's executions include each Test. */
+export async function selectPlanTests(planIssueId) {
+  return query(
+    `SELECT pt.test_issue_id, pt.added_at,
+            (SELECT COUNT(*) FROM execution_test et
+               JOIN test_execution e ON e.execution_issue_id = et.execution_issue_id
+              WHERE e.plan_issue_id = pt.plan_issue_id AND et.test_issue_id = pt.test_issue_id
+            ) AS execution_count
+       FROM plan_test pt
+      WHERE pt.plan_issue_id = ?
+      ORDER BY pt.added_at, pt.test_issue_id`,
+    [planIssueId]
+  );
+}
+
+export async function insertPlanTests(planIssueId, testIssueIds) {
+  if (testIssueIds.length === 0) return;
+  const now = toSqlDateTime();
+  const values = testIssueIds.flatMap((testId) => [planIssueId, testId, now]);
+  await query(
+    `INSERT IGNORE INTO plan_test (plan_issue_id, test_issue_id, added_at)
+     VALUES ${testIssueIds.map(() => '(?, ?, ?)').join(', ')}`,
+    values
+  );
+}
+
+export async function deletePlanTests(planIssueId, testIssueIds) {
+  if (testIssueIds.length === 0) return;
+  await query(
+    `DELETE FROM plan_test WHERE plan_issue_id = ? AND test_issue_id IN (${placeholders(testIssueIds.length)})`,
+    [planIssueId, ...testIssueIds]
+  );
+}
+
+/** Plans that contain a Test (for the Test panel's "Plans" tab). */
+export async function selectPlansForTest(testIssueId) {
+  const rows = await query('SELECT plan_issue_id FROM plan_test WHERE test_issue_id = ? LIMIT 200', [
+    testIssueId,
+  ]);
+  return rows.map((row) => row.plan_issue_id);
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance (admin purge)
+// ---------------------------------------------------------------------------
+
+/**
+ * Distinct issue ids referenced by app data, paged by id. Used by the admin
+ * purge to find rows whose Jira issue no longer exists.
+ */
+export async function selectReferencedIssueIds(afterId, limit) {
+  const rows = await query(
+    `SELECT issue_id FROM (
+       SELECT test_issue_id AS issue_id FROM test_run
+       UNION SELECT execution_issue_id FROM test_execution
+       UNION SELECT test_issue_id FROM execution_test
+       UNION SELECT plan_issue_id FROM plan_test
+       UNION SELECT test_issue_id FROM plan_test
+     ) ids
+     WHERE issue_id > ?
+     ORDER BY issue_id
+     LIMIT ${toLimit(limit)}`,
+    [afterId ?? '']
+  );
+  return rows.map((row) => row.issue_id);
+}
+
+/** Delete every row that references any of the given (deleted) issue ids. */
+export async function deleteDataForIssues(issueIds) {
+  if (issueIds.length === 0) return;
+  const list = placeholders(issueIds.length);
+  await query(`DELETE FROM test_run WHERE test_issue_id IN (${list}) OR execution_issue_id IN (${list})`, [
+    ...issueIds,
+    ...issueIds,
+  ]);
+  await query(`DELETE FROM execution_test WHERE test_issue_id IN (${list}) OR execution_issue_id IN (${list})`, [
+    ...issueIds,
+    ...issueIds,
+  ]);
+  await query(`DELETE FROM plan_test WHERE test_issue_id IN (${list}) OR plan_issue_id IN (${list})`, [
+    ...issueIds,
+    ...issueIds,
+  ]);
+  await query(`DELETE FROM test_execution WHERE execution_issue_id IN (${list})`, issueIds);
+  // Executions whose plan was deleted keep their runs but lose the plan reference.
+  await query(`UPDATE test_execution SET plan_issue_id = NULL WHERE plan_issue_id IN (${list})`, issueIds);
+}
