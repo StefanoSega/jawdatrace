@@ -1,0 +1,107 @@
+modules:
+  # Issue panels: each one is shown only on its issue type. Jira evaluates the
+  # Jira expression itself, so hidden panels cost no function invocations.
+  jira:issuePanel:
+    - key: jawdatrace-test-panel
+      resource: test-panel
+      resolver:
+        function: resolver
+      render: native
+      title: Test details
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      displayConditions:
+        jiraExpression: "issue.issueType.name == 'Test'"
+    - key: jawdatrace-test-set-panel
+      resource: test-set-panel
+      resolver:
+        function: resolver
+      render: native
+      title: Test Set
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      displayConditions:
+        jiraExpression: "issue.issueType.name == 'Test Set'"
+    - key: jawdatrace-test-plan-panel
+      resource: test-plan-panel
+      resolver:
+        function: resolver
+      render: native
+      title: Test Plan
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      displayConditions:
+        jiraExpression: "issue.issueType.name == 'Test Plan'"
+    - key: jawdatrace-test-execution-panel
+      resource: test-execution-panel
+      resolver:
+        function: resolver
+      render: native
+      title: Test Execution
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      displayConditions:
+        jiraExpression: "issue.issueType.name == 'Test Execution'"
+    - key: jawdatrace-coverage-panel
+      resource: coverage-panel
+      resolver:
+        function: resolver
+      render: native
+      title: Test Coverage
+      icon: https://developer.atlassian.com/platform/forge/images/icons/issue-panel-icon.svg
+      displayConditions:
+        # Sub-tasks have hierarchyLevel -1 (IssueType has no `subtask` property in Jira expressions).
+        jiraExpression: "issue.issueType.hierarchyLevel >= 0 && !['Test', 'Test Set', 'Test Plan', 'Test Execution'].includes(issue.issueType.name)"
+  jira:projectPage:
+    - key: jawdatrace-coverage-report
+      resource: coverage-report
+      resolver:
+        function: resolver
+      render: native
+      title: Test coverage
+  jira:adminPage:
+    - key: jawdatrace-admin
+      resource: admin-page
+      resolver:
+        function: resolver
+      render: native
+      title: jawdatrace setup
+  function:
+    - key: resolver
+      handler: index.handler
+    - key: lifecycle
+      handler: index.onLifecycle
+  # Run SQL migrations when the app is installed or upgraded.
+  trigger:
+    - key: jawdatrace-lifecycle
+      function: lifecycle
+      events:
+        - avi:forge:installed:app
+        - avi:forge:upgraded:app
+  sql:
+    - key: main
+      engine: mysql
+resources:
+  - key: test-panel
+    path: src/frontend/test-panel.jsx
+  - key: test-set-panel
+    path: src/frontend/test-set-panel.jsx
+  - key: test-plan-panel
+    path: src/frontend/test-plan-panel.jsx
+  - key: test-execution-panel
+    path: src/frontend/test-execution-panel.jsx
+  - key: coverage-panel
+    path: src/frontend/coverage-panel.jsx
+  - key: coverage-report
+    path: src/frontend/coverage-report.jsx
+  - key: admin-page
+    path: src/frontend/admin-page.jsx
+permissions:
+  scopes:
+    # Issues, links, issue properties, attachments, JQL search (as the user).
+    - read:jira-work
+    - write:jira-work
+    # Admin setup only: create issue types and issue link types.
+    - manage:jira-configuration
+app:
+  runtime:
+    name: nodejs24.x
+    memoryMB: 256
+    architecture: arm64
+  id: ari:cloud:ecosystem::app/bfae0d3b-a56f-4f04-8890-b46e71d08575
