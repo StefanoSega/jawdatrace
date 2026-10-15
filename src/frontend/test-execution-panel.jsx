@@ -9,7 +9,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ForgeReconciler, {
   Box,
   Button,
-  ButtonGroup,
   DynamicTable,
   EmptyState,
   Inline,
@@ -26,7 +25,6 @@ import ForgeReconciler, {
   Text,
   Textfield,
   Toggle,
-  User,
   useProductContext,
 } from '@forge/react';
 import { ISSUE_TYPES, RUN_STATUS } from '../shared/constants';
@@ -35,10 +33,11 @@ import {
   ErrorBanner,
   HiddenNotice,
   IssueLink,
+  LastRun,
   Loading,
+  RowActions,
   StatusLozenge,
   StatusSummary,
-  formatDate,
 } from './shared/components';
 import ExecuteForm from './shared/ExecuteForm';
 import { searchIssuesOfType } from './shared/jira';
@@ -262,16 +261,17 @@ function App() {
       <DynamicTable
         caption="Tests in this execution"
         rowsPerPage={20}
+        // Fixed column widths (percent) keep the table inside the issue panel;
+        // long text wraps instead of pushing the action buttons out of view.
+        isFixedSize
         head={{
           cells: [
-            { key: 'rank', content: '#' },
-            { key: 'key', content: 'Key' },
-            { key: 'summary', content: 'Summary' },
-            { key: 'priority', content: 'Priority' },
-            { key: 'status', content: 'Test status' },
-            { key: 'by', content: 'Executed by' },
-            { key: 'when', content: 'When' },
-            { key: 'actions', content: '' },
+            { key: 'rank', content: '#', width: 5 },
+            { key: 'key', content: 'Key', width: 11 },
+            { key: 'summary', content: 'Summary', width: 30 },
+            { key: 'status', content: 'Test status', width: 14 },
+            { key: 'last', content: 'Last run', width: 20 },
+            { key: 'actions', content: '', width: 20 },
           ],
         }}
         rows={rows.map((test, index) => ({
@@ -280,29 +280,28 @@ function App() {
             { key: 'rank', content: index + 1 },
             { key: 'key', content: <IssueLink issueKey={test.key} /> },
             { key: 'summary', content: test.summary },
-            { key: 'priority', content: test.priority },
             { key: 'status', content: <StatusLozenge status={test.run?.status} /> },
-            { key: 'by', content: test.run ? <User accountId={test.run.executedBy} /> : '' },
-            { key: 'when', content: formatDate(test.run?.executedAt) },
+            { key: 'last', content: <LastRun run={test.run} /> },
             {
               key: 'actions',
               content: (
-                <ButtonGroup>
+                <RowActions>
+                  <Button appearance="primary" spacing="compact" onClick={() => setExecuting(test)}>
+                    Execute
+                  </Button>
                   <LoadingButton
                     appearance="subtle"
+                    spacing="compact"
                     isLoading={busyTestId === test.id}
                     isDisabled={test.run?.status === RUN_STATUS.EXECUTING}
                     onClick={() => start(test)}
                   >
                     Start
                   </LoadingButton>
-                  <Button appearance="primary" onClick={() => setExecuting(test)}>
-                    Execute
-                  </Button>
-                  <Button appearance="subtle" onClick={() => remove(test)}>
+                  <Button appearance="subtle" spacing="compact" onClick={() => remove(test)}>
                     Remove
                   </Button>
-                </ButtonGroup>
+                </RowActions>
               ),
             },
           ],

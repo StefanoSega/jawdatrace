@@ -8,7 +8,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ForgeReconciler, {
   Button,
-  ButtonGroup,
   DynamicTable,
   EmptyState,
   Inline,
@@ -26,7 +25,7 @@ import ForgeReconciler, {
 import { LINK_TYPES, SCOPE } from '../shared/constants';
 import { countStatuses, overallStatus } from '../shared/status';
 import { errorMessage } from './shared/api';
-import { ErrorBanner, IssueLink, Loading, StatusLozenge, StatusSummary, formatDate } from './shared/components';
+import { ErrorBanner, IssueLink, LastRun, Loading, RowActions, StatusLozenge, StatusSummary } from './shared/components';
 import ExecuteForm from './shared/ExecuteForm';
 import { createLink, deleteLink, getIssueLinks, linkedIssues, toRow } from './shared/jira';
 import ScopePicker from './shared/ScopePicker';
@@ -114,15 +113,16 @@ function App() {
         caption="Tests in this set"
         isLoading={statusLoading}
         rowsPerPage={20}
+        // Fixed column widths (percent) keep the table inside the issue panel.
+        isFixedSize
         head={{
           cells: [
-            { key: 'key', content: 'Key', isSortable: true },
-            { key: 'summary', content: 'Summary' },
-            { key: 'priority', content: 'Priority' },
-            { key: 'jira', content: 'Status' },
-            { key: 'test', content: 'Test status' },
-            { key: 'when', content: 'Last run' },
-            { key: 'actions', content: '' },
+            { key: 'key', content: 'Key', isSortable: true, width: 11 },
+            { key: 'summary', content: 'Summary', width: 31 },
+            { key: 'jira', content: 'Status', width: 12 },
+            { key: 'test', content: 'Test status', width: 13 },
+            { key: 'last', content: 'Last run', width: 18 },
+            { key: 'actions', content: '', width: 15 },
           ],
         }}
         rows={visibleMembers.map((member) => {
@@ -132,21 +132,20 @@ function App() {
             cells: [
               { key: member.key, content: <IssueLink issueKey={member.key} /> },
               { key: 'summary', content: member.summary },
-              { key: 'priority', content: member.priority },
               { key: 'jira', content: member.jiraStatus },
               { key: 'test', content: <StatusLozenge status={run?.status} /> },
-              { key: 'when', content: formatDate(run?.executedAt) },
+              { key: 'last', content: <LastRun run={run} /> },
               {
                 key: 'actions',
                 content: (
-                  <ButtonGroup>
-                    <Button appearance="subtle" onClick={() => setExecuting(member)}>
+                  <RowActions>
+                    <Button appearance="primary" spacing="compact" onClick={() => setExecuting(member)}>
                       Execute
                     </Button>
-                    <Button appearance="subtle" onClick={() => remove(member)}>
+                    <Button appearance="subtle" spacing="compact" onClick={() => remove(member)}>
                       Remove
                     </Button>
-                  </ButtonGroup>
+                  </RowActions>
                 ),
               },
             ],

@@ -121,3 +121,5 @@ The project is not a git repository yet.
 - **Jira expressions:** `IssueType` has no `subtask` property, and using it makes the display condition fail silently, so the panel never appears. Use `issue.issueType.hierarchyLevel >= 0` to exclude sub-tasks, which have level -1.
 - **Panels:** issue panels don't appear on an issue automatically. Each user adds a panel once per issue type from the Apps button under the issue title, and Jira then remembers it.
 - **Text inputs:** controlled UI Kit text inputs drop keystrokes. See "Text inputs must be uncontrolled" above.
+- **Charts:** a chart's `colorPalette` takes **hex** values, as `[{ key: <label>, value: '#RRGGBB' }]`. Design tokens such as `color.chart.success.bold` render every slice black.
+- **Wide tables:** `DynamicTable` overflows narrow issue panels. Set `isFixedSize` and give each head cell a percentage `width` that adds up to 100. Combine related columns into one cell (see `LastRun`), and use `RowActions` with `spacing="compact"` buttons.
