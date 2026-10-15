@@ -14,6 +14,7 @@ import {
   Spinner,
   Stack,
   Text,
+  User,
   xcss,
 } from '@forge/react';
 import { OVERALL, TODO } from '../../shared/constants';
@@ -99,6 +100,29 @@ function CountBadge({ label, value, appearance }) {
         {value}
       </Badge>
       <Text>{label}</Text>
+    </Inline>
+  );
+}
+
+/**
+ * "Last run" table cell: who ran it, with the date underneath. One column
+ * instead of two keeps wide tables inside a narrow issue panel.
+ */
+export function LastRun({ run }) {
+  if (!run) return <Text>—</Text>;
+  return (
+    <Stack space="space.050">
+      {run.executedBy ? <User accountId={run.executedBy} /> : null}
+      <Text size="small">{formatDate(run.executedAt)}</Text>
+    </Stack>
+  );
+}
+
+/** Row action buttons that wrap onto a new line instead of overflowing the table. */
+export function RowActions({ children }) {
+  return (
+    <Inline space="space.050" shouldWrap>
+      {children}
     </Inline>
   );
 }

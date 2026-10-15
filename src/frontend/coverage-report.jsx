@@ -36,6 +36,18 @@ import { getTestSetMembers, jqlString, linkedIssues, searchAll, searchPage, toRo
 import ScopePicker from './shared/ScopePicker';
 import { fetchStatuses } from './shared/useStatuses';
 
+// Fixed slice colours that match the status lozenges (otherwise the chart
+// assigns arbitrary colours, e.g. "Failed" in blue). Keys are the slice labels.
+// The chart only accepts hex colours (design tokens render black), so these are
+// the hex values of the Atlassian green/red/orange/blue/grey palette.
+const STATUS_CHART_COLORS = [
+  { key: 'Passed', value: '#22A06B' },
+  { key: 'Failed', value: '#C9372C' },
+  { key: 'Blocked', value: '#E56910' },
+  { key: 'Executing', value: '#1D7AFC' },
+  { key: 'To do', value: '#8590A2' },
+];
+
 const STORY_PAGE_SIZE = 50;
 const TEST_SCAN_CAP = 1000;
 
@@ -285,6 +297,7 @@ function TestsTab({ projectKey, scope }) {
               colorAccessor="label"
               labelAccessor="label"
               valueAccessor="value"
+              colorPalette={STATUS_CHART_COLORS}
             />
           )}
           {table('Failing Tests', failing, 'No failing Tests.')}
