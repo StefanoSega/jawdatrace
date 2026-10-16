@@ -18,9 +18,12 @@ describe('buildStatusMap', () => {
       { test_issue_id: '2', status: 'FAIL', executed_at: '2026-10-01 10:00:00.000', rn_any: 1, rn_final: 1 },
     ];
     const map = buildStatusMap(rows);
-    expect(map['1'].status).toBe('EXECUTING');
+    // Default (Xray's default): the final PASS has precedence over the re-run.
+    expect(map['1'].status).toBe('PASS');
     expect(map['2'].status).toBe('FAIL');
     expect(map['2'].executedAt).toBe('2026-10-01T10:00:00.000Z');
+    // Without final precedence the newer EXECUTING re-run wins.
+    expect(buildStatusMap(rows, { finalPrecedence: false })['1'].status).toBe('EXECUTING');
   });
 });
 
@@ -50,14 +53,25 @@ describe('buildStatusMap across environments (regression: dev-site Plan JDT-7)',
 
 describe('parseScope', () => {
   it('defaults to latest and validates plan/execution ids', () => {
-    expect(parseScope(undefined)).toEqual({ kind: 'latest' });
+    expect(parseScope(undefined)).toEqual({ kind: 'latest', environment: null, finalPrecedence: true });
     expect(parseScope({ kind: 'plan', id: '5', environment: 'iOS' })).toEqual({
       kind: 'plan',
       id: '5',
       environment: 'iOS',
+      finalPrecedence: true,
     });
     expect(() => parseScope({ kind: 'plan', id: 'abc' })).toThrow();
     expect(() => parseScope({ kind: 'everything' })).toThrow();
+  });
+
+  it('accepts an environment and the final-precedence flag on the latest scope', () => {
+    expect(parseScope({ kind: 'latest', environment: 'Android', finalPrecedence: false })).toEqual({
+      kind: 'latest',
+      environment: 'Android',
+      finalPrecedence: false,
+    });
+    expect(parseScope({ kind: 'latest', environment: '' }).environment).toBeNull();
+    expect(() => parseScope({ kind: 'latest', environment: 'x'.repeat(101) })).toThrow(/environment/);
   });
 });
 
@@ -81,6 +95,21 @@ describe('getStatuses', () => {
       /not accessible/
     );
     expect(sqlCalls).toHaveLength(0);
+  });
+
+  it('honours finalPrecedence=false from the UI scope', async () => {
+    setJiraHandler((as, path, init) => ({
+      status: 200,
+      body: { issues: init.body.issueIdsOrKeys.map((id) => ({ id, fields: {} })) },
+    }));
+    setSqlHandler(() => [
+      { test_issue_id: '1', env: 'iOS', status: 'EXECUTING', executed_at: '2026-10-02 10:00:00.000', rn_any: 1, rn_final: 1 },
+      { test_issue_id: '1', env: 'iOS', status: 'PASS', executed_at: '2026-10-01 10:00:00.000', rn_any: 2, rn_final: 1 },
+    ]);
+    const on = await getStatuses({ testIssueIds: ['1'], scope: { kind: 'latest' } });
+    expect(on.statuses['1'].status).toBe('PASS');
+    const off = await getStatuses({ testIssueIds: ['1'], scope: { kind: 'latest', finalPrecedence: false } });
+    expect(off.statuses['1'].status).toBe('EXECUTING');
   });
 
   it('caps the number of ids per call', async () => {

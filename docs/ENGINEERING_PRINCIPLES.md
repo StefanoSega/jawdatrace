@@ -71,6 +71,8 @@ Implement only the agreed MVP:
 
 Defer automated test imports, CI/CD integrations, BDD, advanced Test Plans, complex workflows, AI features, and external infrastructure unless explicitly approved.
 
+*Approved exception (user decision, 2026-10-16): a one-off, admin-started **Xray import** (`src/import/`), run through a Forge async-events queue. It is the app's only background work and only runs while an admin-started import is in progress. See `docs/OPERATIONS.md` → Xray migration.*
+
 Before adding a feature, explain its implementation cost, recurring Forge consumption, and maintenance implications.
 
 ## 6. Security and multi-tenancy

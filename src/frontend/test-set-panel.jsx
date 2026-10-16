@@ -40,6 +40,7 @@ function App() {
   const context = useProductContext();
   const setId = context?.extension?.issue?.id ? String(context.extension.issue.id) : null;
   const projectKey = context?.extension?.project?.key;
+  const projectId = context?.extension?.project?.id ? String(context.extension.project.id) : undefined;
 
   const [members, setMembers] = useState(null); // [{ linkId, ...row }]
   const [error, setError] = useState(null);
@@ -102,7 +103,7 @@ function App() {
     <Stack space="space.200">
       <ErrorBanner error={error || statusError} />
       <Inline space="space.200" alignBlock="end" shouldWrap>
-        <ScopePicker projectKey={projectKey} onChange={setScope} />
+        <ScopePicker projectKey={projectKey} projectId={projectId} onChange={setScope} />
         <Inline space="space.100" alignBlock="center">
           <Toggle id="only-incomplete" isChecked={onlyIncomplete} onChange={() => setOnlyIncomplete((v) => !v)} />
           <Label labelFor="only-incomplete">Only tests not passed</Label>

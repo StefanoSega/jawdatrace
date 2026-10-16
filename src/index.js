@@ -3,6 +3,9 @@ import { runMigrations } from './db/migrations';
 // Resolver functions used by every UI module (see manifest.yml `function: resolver`).
 export { handler } from './resolvers';
 
+// Queue consumer for the one-off Xray import (see manifest.yml `consumer`).
+export { handler as importWorker } from './import/worker';
+
 /**
  * Lifecycle trigger (app installed / upgraded): create or update the SQL
  * schema up front so the first user doesn't pay for it. Resolvers also run

@@ -117,7 +117,8 @@ export async function selectRunsPage(testIssueId, cursor, pageSize) {
  * later pass on Android). Ad-hoc runs (no execution) form their own bucket.
  *
  * @param {string[]} testIssueIds - already permission-filtered
- * @param {{ kind: 'latest' | 'plan' | 'execution', id?: string, environment?: string }} scope
+ * @param {{ kind: 'latest' | 'plan' | 'execution', id?: string, environment?: string | null }} scope
+ *   environment applies to the latest and plan scopes (an execution has one environment already)
  */
 export async function selectLatestRuns(testIssueIds, scope) {
   if (testIssueIds.length === 0) return [];
@@ -129,10 +130,12 @@ export async function selectLatestRuns(testIssueIds, scope) {
   } else if (scope.kind === 'plan') {
     scopeWhere = 'AND e.plan_issue_id = ?';
     params.push(scope.id);
-    if (scope.environment) {
-      scopeWhere += ' AND e.environment = ?';
-      params.push(scope.environment);
-    }
+  }
+  // Environment filter for the latest and plan scopes. Ad-hoc runs have no
+  // execution row (e.* is NULL), so they drop out when a filter is set.
+  if (scope.environment && scope.kind !== 'execution') {
+    scopeWhere += ' AND e.environment = ?';
+    params.push(scope.environment);
   }
   return query(
     `SELECT test_issue_id, env, status, executed_at, executed_by, rn_any, rn_final
@@ -379,4 +382,60 @@ export async function deleteDataForIssues(issueIds) {
   await query(`DELETE FROM test_execution WHERE execution_issue_id IN (${list})`, issueIds);
   // Executions whose plan was deleted keep their runs but lose the plan reference.
   await query(`UPDATE test_execution SET plan_issue_id = NULL WHERE plan_issue_id IN (${list})`, issueIds);
+}
+
+// ---------------------------------------------------------------------------
+// Xray import (bulk, idempotent inserts; one statement per page)
+// ---------------------------------------------------------------------------
+
+/** Many (plan, test) pairs in one statement; existing pairs are ignored. */
+export async function insertPlanTestPairs(pairs) {
+  if (pairs.length === 0) return;
+  const now = toSqlDateTime();
+  await query(
+    `INSERT IGNORE INTO plan_test (plan_issue_id, test_issue_id, added_at)
+     VALUES ${pairs.map(() => '(?, ?, ?)').join(', ')}`,
+    pairs.flatMap((pair) => [pair.planIssueId, pair.testIssueId, now])
+  );
+}
+
+/** Many execution memberships in one statement; existing rows keep their order. */
+export async function insertExecutionTestRows(rows) {
+  if (rows.length === 0) return;
+  const now = toSqlDateTime();
+  await query(
+    `INSERT IGNORE INTO execution_test (execution_issue_id, test_issue_id, sort_order, added_at)
+     VALUES ${rows.map(() => '(?, ?, ?, ?)').join(', ')}`,
+    rows.flatMap((row) => [row.executionIssueId, row.testIssueId, row.sortOrder, now])
+  );
+}
+
+/**
+ * Many runs in one statement. Idempotent through the unique key
+ * (test_issue_id, client_request_id): re-importing the same Xray run is a no-op.
+ *
+ * @returns {Promise<number>} rows actually inserted
+ */
+export async function insertRuns(runs) {
+  if (runs.length === 0) return 0;
+  const result = await query(
+    `INSERT IGNORE INTO test_run
+       (id, test_issue_id, execution_issue_id, status, comment, evidence, steps_revision,
+        executed_by, executed_at, client_request_id, schema_version)
+     VALUES ${runs.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+    runs.flatMap((run) => [
+      run.id,
+      run.testIssueId,
+      run.executionIssueId ?? null,
+      run.status,
+      run.comment ?? null,
+      JSON.stringify(run.evidence),
+      null,
+      run.executedBy,
+      toSqlDateTime(run.executedAt),
+      run.clientRequestId,
+      DATA_SCHEMA_VERSION,
+    ])
+  );
+  return result?.affectedRows ?? 0;
 }

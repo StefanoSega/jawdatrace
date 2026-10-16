@@ -63,8 +63,13 @@ describe('resolveDisplayStatus', () => {
   it('prefers the final result over an older EXECUTING run', () => {
     expect(resolveDisplayStatus(pass, olderExecuting)).toBe(pass);
   });
-  it('shows a newer EXECUTING re-run', () => {
-    expect(resolveDisplayStatus(pass, newerExecuting)).toBe(newerExecuting);
+  it('keeps the final result over a newer EXECUTING re-run by default (Xray default)', () => {
+    expect(resolveDisplayStatus(pass, newerExecuting)).toBe(pass);
+    expect(resolveDisplayStatus(pass, newerExecuting, { finalPrecedence: true })).toBe(pass);
+  });
+  it('shows a newer EXECUTING re-run when final precedence is off', () => {
+    expect(resolveDisplayStatus(pass, newerExecuting, { finalPrecedence: false })).toBe(newerExecuting);
+    expect(resolveDisplayStatus(pass, olderExecuting, { finalPrecedence: false })).toBe(pass);
   });
   it('shows EXECUTING when there is no final result', () => {
     expect(resolveDisplayStatus(undefined, newerExecuting)).toBe(newerExecuting);

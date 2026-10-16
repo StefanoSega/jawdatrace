@@ -38,5 +38,30 @@ export function route(strings, ...values) {
   return strings.reduce((out, part, index) => out + part + (index < values.length ? String(values[index]) : ''), '');
 }
 
+// External fetch (e.g. Xray): `setFetchHandler((url, init) => ({ status, body }))`.
+export const fetchCalls = [];
+let fetchHandler = () => ({ status: 404, body: null });
+
+export function setFetchHandler(fn) {
+  fetchHandler = fn;
+}
+
+export function resetFetch() {
+  fetchCalls.length = 0;
+  fetchHandler = () => ({ status: 404, body: null });
+}
+
+export async function fetch(url, init = {}) {
+  const body = init.body ? JSON.parse(init.body) : undefined;
+  fetchCalls.push({ url, method: init.method ?? 'GET', body });
+  const result = (await fetchHandler(url, { ...init, body })) ?? { status: 404 };
+  const status = result.status ?? 200;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => (result.body === undefined ? '' : JSON.stringify(result.body)),
+  };
+}
+
 const api = { asUser: () => client('user'), asApp: () => client('app') };
 export default api;

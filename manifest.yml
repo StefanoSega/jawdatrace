@@ -67,6 +67,16 @@ modules:
       handler: index.handler
     - key: lifecycle
       handler: index.onLifecycle
+    # One-off Xray import worker; each invocation works up to ~9 minutes.
+    - key: importWorker
+      handler: index.importWorker
+      timeoutSeconds: 900
+  # Queue for the Xray import. Fed only by an admin pressing Start/Resume and by
+  # the worker continuing itself; nothing is scheduled.
+  consumer:
+    - key: xray-import-consumer
+      queue: xray-import
+      function: importWorker
   # Run SQL migrations when the app is installed or upgraded.
   trigger:
     - key: jawdatrace-lifecycle
@@ -99,6 +109,16 @@ permissions:
     - write:jira-work
     # Admin setup only: create issue types and issue link types.
     - manage:jira-configuration
+    # Forge KVS: Xray import progress and the Xray API key (as a secret).
+    - storage:app
+  external:
+    fetch:
+      backend:
+        # Xray Cloud API, read by the one-off Xray import only.
+        - address: https://xray.cloud.getxray.app
+        - address: https://us.xray.cloud.getxray.app
+        - address: https://eu.xray.cloud.getxray.app
+        - address: https://au.xray.cloud.getxray.app
 app:
   runtime:
     name: nodejs24.x

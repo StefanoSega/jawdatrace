@@ -4,21 +4,30 @@
  *  - Creates the app's issue types (Test, Test Set, Test Plan, Test Execution)
  *    and link types ("Test", "Test Set"). Safe to run again.
  *  - Purges app data for Jira issues that were deleted (manual, batched).
+ *  - One-off import from Xray Cloud (steps, Set/Plan membership, executions
+ *    and runs). The work runs in a queue consumer; this page only starts it
+ *    and shows progress when the admin presses "Refresh" (no polling).
  */
 import React, { useEffect, useState } from 'react';
 import ForgeReconciler, {
+  Button,
+  ButtonGroup,
   DynamicTable,
   Heading,
+  Inline,
+  Label,
   List,
   ListItem,
   LoadingButton,
   Lozenge,
   SectionMessage,
+  Select,
   Stack,
   Text,
+  Textfield,
 } from '@forge/react';
 import { callResolver, errorMessage } from './shared/api';
-import { ErrorBanner, Loading } from './shared/components';
+import { ErrorBanner, Loading, formatDate } from './shared/components';
 
 function ExistsLozenge({ exists }) {
   return <Lozenge appearance={exists ? 'success' : 'removed'}>{exists ? 'Exists' : 'Missing'}</Lozenge>;
@@ -171,11 +180,177 @@ function PurgeSection() {
   );
 }
 
+const XRAY_REGION_OPTIONS = [
+  { label: 'Global (auto)', value: 'global' },
+  { label: 'United States', value: 'us' },
+  { label: 'Europe', value: 'eu' },
+  { label: 'Australia', value: 'au' },
+];
+
+const IMPORT_STATUS_APPEARANCE = { running: 'inprogress', waiting: 'moved', done: 'success', failed: 'removed' };
+
+const IMPORT_COUNT_LABELS = [
+  ['tests', 'Tests read from Xray'],
+  ['stepsWritten', 'Tests given steps'],
+  ['setLinks', 'Test Set links created'],
+  ['planTests', 'Plan memberships'],
+  ['executions', 'Test Executions'],
+  ['runs', 'Runs imported'],
+  ['todo', 'TODO runs (membership only)'],
+  ['skippedStatus', 'Runs skipped (custom Xray status)'],
+  ['truncated', 'Issues with extra Sets/Plans not imported'],
+  ['failedLinks', 'Links Jira refused'],
+];
+
+function XrayImportSection() {
+  // Text inputs are uncontrolled (defaultValue + onChange): see CLAUDE.md.
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [region, setRegion] = useState(XRAY_REGION_OPTIONS[0]);
+  const [projectKey, setProjectKey] = useState('');
+  const [info, setInfo] = useState(null); // { hasCredentials, region, state }
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  useEffect(() => {
+    callResolver('getXrayImportState')
+      .then(setInfo)
+      .catch((err) => setError(errorMessage(err)));
+  }, []);
+
+  const act = async (name, fn) => {
+    setBusy(name);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveKey = () =>
+    act('save', async () => {
+      const result = await callResolver('saveXrayCredentials', { clientId, clientSecret, region: region.value });
+      setInfo((current) => ({ ...current, ...result }));
+    });
+  const start = (restart) =>
+    act(restart ? 'start' : 'resume', async () => {
+      const result = await callResolver('startXrayImport', { projectKey, restart });
+      setInfo((current) => ({ ...current, state: result.state }));
+    });
+  const refresh = () =>
+    act('refresh', async () => setInfo(await callResolver('getXrayImportState', { projectKey })));
+
+  const state = info?.state;
+
+  return (
+    <Stack space="space.200">
+      <Heading size="medium">Import from Xray</Heading>
+      <Text>
+        Copies Xray data that is not stored in Jira: Test steps, Test Set and Test Plan membership, Test Executions
+        (environment, plan) and their runs. Existing data is kept and re-running is safe. Xray evidence files and
+        step-level results are not copied.
+      </Text>
+      <ErrorBanner error={error} />
+      <Text>
+        Xray API key: {info?.hasCredentials ? `saved (${info.region})` : 'not saved'}. Create one in Xray → Global
+        Settings → API Keys.
+      </Text>
+      <Label labelFor="xray-client-id">Client ID</Label>
+      <Textfield id="xray-client-id" defaultValue="" onChange={(e) => setClientId(e.target.value)} />
+      <Label labelFor="xray-client-secret">Client Secret</Label>
+      <Textfield
+        id="xray-client-secret"
+        type="password"
+        defaultValue=""
+        onChange={(e) => setClientSecret(e.target.value)}
+      />
+      <Label labelFor="xray-region">Xray region</Label>
+      <Select
+        inputId="xray-region"
+        options={XRAY_REGION_OPTIONS}
+        value={region}
+        onChange={(option) => setRegion(option ?? XRAY_REGION_OPTIONS[0])}
+      />
+      <LoadingButton isLoading={busy === 'save'} isDisabled={!clientId || !clientSecret} onClick={saveKey}>
+        Check and save API key
+      </LoadingButton>
+
+      <Label labelFor="xray-project">Project key</Label>
+      <Textfield
+        id="xray-project"
+        defaultValue=""
+        onChange={(e) => setProjectKey(e.target.value.trim().toUpperCase())}
+      />
+      <ButtonGroup>
+        <LoadingButton
+          appearance="primary"
+          isLoading={busy === 'start'}
+          isDisabled={!projectKey || !info?.hasCredentials}
+          onClick={() => start(true)}
+        >
+          Start import
+        </LoadingButton>
+        <LoadingButton
+          isLoading={busy === 'resume'}
+          isDisabled={!projectKey || !info?.hasCredentials}
+          onClick={() => start(false)}
+        >
+          Resume
+        </LoadingButton>
+        <Button isDisabled={!projectKey || busy !== null} onClick={refresh}>
+          Refresh status
+        </Button>
+      </ButtonGroup>
+
+      {state && (
+        <Stack space="space.100">
+          <Inline space="space.100" alignBlock="center" shouldWrap>
+            <Text>{state.projectKey}</Text>
+            <Lozenge appearance={IMPORT_STATUS_APPEARANCE[state.status] ?? 'default'}>{state.status}</Lozenge>
+            <Text>
+              Stage: {state.stage}
+              {state.error ? ` (${state.error})` : ''}. Last update: {formatDate(state.updatedAt ?? state.startedAt)}.
+            </Text>
+          </Inline>
+          <DynamicTable
+            caption="Import progress"
+            head={{
+              cells: [
+                { key: 'what', content: 'What' },
+                { key: 'count', content: 'Count' },
+              ],
+            }}
+            rows={IMPORT_COUNT_LABELS.map(([key, label]) => ({
+              key,
+              cells: [
+                { key: 'what', content: label },
+                {
+                  key: 'count',
+                  content:
+                    key === 'tests' && state.totals?.tests
+                      ? `${state.counts?.[key] ?? 0} of ${state.totals.tests}`
+                      : key === 'executions' && state.totals?.executions
+                        ? `${state.counts?.[key] ?? 0} of ${state.totals.executions}`
+                        : String(state.counts?.[key] ?? 0),
+                },
+              ],
+            }))}
+          />
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
 function App() {
   return (
     <Stack space="space.400">
       <SetupSection />
       <PurgeSection />
+      <XrayImportSection />
     </Stack>
   );
 }

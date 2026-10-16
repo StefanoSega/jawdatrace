@@ -16,6 +16,7 @@ import { addPlanTests, getPlan, getTestPlans, listPlanExecutions, removePlanTest
 import { getRuns, recordRun } from './runs';
 import { getSetupState, purgeOrphans, runSetup } from './setup';
 import { getStatuses } from './status';
+import { getXrayImportState, saveXrayCredentials, startXrayImport } from './xrayImport';
 
 /** Turn any thrown error into a safe, user-facing error object. Exported for tests. */
 export function toErrorResponse(error) {
@@ -72,5 +73,9 @@ resolver.define('listEnvironments', wrap('listEnvironments', listEnvironments));
 resolver.define('getSetupState', wrap('getSetupState', getSetupState, { needsSql: false }));
 resolver.define('runSetup', wrap('runSetup', runSetup, { needsSql: false }));
 resolver.define('purgeOrphans', wrap('purgeOrphans', purgeOrphans));
+// Xray import (admin; KVS only, the SQL work happens in the queue consumer)
+resolver.define('getXrayImportState', wrap('getXrayImportState', getXrayImportState, { needsSql: false }));
+resolver.define('saveXrayCredentials', wrap('saveXrayCredentials', saveXrayCredentials, { needsSql: false }));
+resolver.define('startXrayImport', wrap('startXrayImport', startXrayImport, { needsSql: false }));
 
 export const handler = resolver.getDefinitions();
