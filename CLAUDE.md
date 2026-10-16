@@ -15,11 +15,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 All `forge` commands (except `create`, `version` and `login`) must run from the repo root, where `manifest.yml` lives.
 
 ```bash
-npm install                        # after adding or updating any dependency
-npm test                           # vitest unit tests (test/**/*.test.js)
-npx vitest run test/runs.test.js   # a single test file
-npx vitest run -t "recordRun"      # tests whose name matches
-npm run lint                       # ESLint (only react-hooks/rules-of-hooks is enforced)
 forge lint                         # validate manifest.yml and the app; run after every manifest change
 forge deploy --non-interactive -e development
 forge install --non-interactive --site <site-url> --product jira --environment development
@@ -40,17 +35,7 @@ forge logs -e development -n 100 --since 15m
 
 Every UI module in `manifest.yml` shares one resolver function (`index.handler` → `src/resolvers/index.js`). The UI calls it with `invoke('<name>', payload)` through `callResolver()` in `src/frontend/shared/api.js`.
 
-Issue panels use `displayConditions.jiraExpression` on the issue type name, so a hidden panel costs nothing. Resources live in `src/frontend/`:
-
-| Resource | Shown on |
-|---|---|
-| `test-panel.jsx` | Test issues |
-| `test-set-panel.jsx` | Test Set issues |
-| `test-plan-panel.jsx` | Test Plan issues |
-| `test-execution-panel.jsx` | Test Execution issues |
-| `coverage-panel.jsx` | Other non-subtask issues, such as Stories |
-| `coverage-report.jsx` | The `jira:projectPage` |
-| `admin-page.jsx` | The `jira:adminPage`, which creates issue types and link types and purges orphaned data |
+Issue panels use `displayConditions.jiraExpression` on the issue type name, so a hidden panel costs nothing. Resources live in `src/frontend/`, one per module in `manifest.yml`.
 
 A `trigger` on `avi:forge:installed:app` / `avi:forge:upgraded:app` runs the SQL migrations (`index.onLifecycle`). Resolvers also run them lazily through `runMigrations()` in `src/db/migrations.js`. Migrations are append-only: never edit one that has shipped.
 
@@ -98,14 +83,7 @@ Resolvers return `{ ok, data }` or `{ ok: false, error: { code, message } }` via
 
 Unit tests in `test/` run under vitest. `vitest.config.mjs` aliases `@forge/api` and `@forge/sql` to the in-memory mocks in `test/mocks/`. Use `setJiraHandler` / `setSqlHandler` to script responses, and assert on `jiraCalls` / `sqlCalls`. When a bug is found on the dev site, add a regression test that reproduces the real data (see the "regression: dev-site Plan JDT-7" test in `test/status-resolver.test.js`).
 
-There are no UI component tests, and the mocks can't catch Forge SQL or Jira expression quirks. So after deploying, check UI and SQL changes on the dev site:
-- Open issues through `https://techstarter-test.atlassian.net/jira/software/c/projects/JDT/issues/JDT-<n>`, then use the expand button for the full view. Plain `/browse/JDT-<n>` links currently redirect to a Jira onboarding screen.
-- The coverage report is under **More → Test coverage** in the JDT project's tabs.
-- To set up data quickly, or to inspect what Jira stored (links, issue properties, attachments), call the REST API with `fetch` from a signed-in Jira tab. Writes need the header `X-Atlassian-Token: no-check`.
-- To test a display condition before deploying, POST it to `/rest/api/3/expression/evaluate` with `{ expression, context: { issue: { key } } }`. The older `/expression/eval` endpoint has been removed.
-- `forge logs` has returned nothing for this app so far. Don't rely on it, and use the UI error plus code inspection instead.
-
-The project is not a git repository yet.
+There are no UI component tests, and the mocks can't catch Forge SQL or Jira expression quirks. After deploying, check UI and SQL changes on the dev site using the `verify-on-dev-site` skill.
 
 ## Forge constraints (from AGENTS.md)
 
@@ -120,6 +98,5 @@ The project is not a git repository yet.
 - **Forge SQL:** a bound `LIMIT ?` parameter makes the query fail. Inline the limit through `toLimit()` in `src/db/queries.js` instead.
 - **Jira expressions:** `IssueType` has no `subtask` property, and using it makes the display condition fail silently, so the panel never appears. Use `issue.issueType.hierarchyLevel >= 0` to exclude sub-tasks, which have level -1.
 - **Panels:** issue panels don't appear on an issue automatically. Each user adds a panel once per issue type from the Apps button under the issue title, and Jira then remembers it.
-- **Text inputs:** controlled UI Kit text inputs drop keystrokes. See "Text inputs must be uncontrolled" above.
 - **Charts:** a chart's `colorPalette` takes **hex** values, as `[{ key: <label>, value: '#RRGGBB' }]`. Design tokens such as `color.chart.success.bold` render every slice black.
 - **Wide tables:** `DynamicTable` overflows narrow issue panels. Set `isFixedSize` and give each head cell a percentage `width` that adds up to 100. Combine related columns into one cell (see `LastRun`), and use `RowActions` with `spacing="compact"` buttons.
