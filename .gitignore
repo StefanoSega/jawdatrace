@@ -50,3 +50,6 @@ Thumbs.db
 
 
 /.forge/
+
+# Local credentials (never commit)
+.env

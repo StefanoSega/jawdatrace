@@ -67,6 +67,16 @@ modules:
       handler: index.handler
     - key: lifecycle
       handler: index.onLifecycle
+    # Admin-started data import worker; each invocation works up to ~9 minutes.
+    - key: importWorker
+      handler: index.importWorker
+      timeoutSeconds: 900
+  # Queue for the data import. Fed only by an admin pressing Start/Resume and
+  # by the worker continuing itself; nothing is scheduled.
+  consumer:
+    - key: data-import-consumer
+      queue: data-import
+      function: importWorker
   # Run SQL migrations when the app is installed or upgraded.
   trigger:
     - key: jawdatrace-lifecycle

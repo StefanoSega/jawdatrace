@@ -16,6 +16,7 @@ import { addPlanTests, getPlan, getTestPlans, listPlanExecutions, removePlanTest
 import { getRuns, recordRun } from './runs';
 import { getSetupState, purgeOrphans, runSetup } from './setup';
 import { getStatuses } from './status';
+import { getImportState, startImport } from './dataImport';
 
 /** Turn any thrown error into a safe, user-facing error object. Exported for tests. */
 export function toErrorResponse(error) {
@@ -72,5 +73,8 @@ resolver.define('listEnvironments', wrap('listEnvironments', listEnvironments));
 resolver.define('getSetupState', wrap('getSetupState', getSetupState, { needsSql: false }));
 resolver.define('runSetup', wrap('runSetup', runSetup, { needsSql: false }));
 resolver.define('purgeOrphans', wrap('purgeOrphans', purgeOrphans));
+// Data import (admin; the work happens in the queue consumer)
+resolver.define('getImportState', wrap('getImportState', getImportState));
+resolver.define('startImport', wrap('startImport', startImport));
 
 export const handler = resolver.getDefinitions();

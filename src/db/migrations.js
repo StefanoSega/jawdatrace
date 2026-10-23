@@ -69,6 +69,15 @@ const MIGRATIONS = [
        KEY idx_plan_test_test (test_issue_id)
      )`,
   ],
+  [
+    // Progress of an admin-started data import, one row per project.
+    'v005_create_import_job',
+    `CREATE TABLE IF NOT EXISTS import_job (
+       project_key VARCHAR(50) NOT NULL PRIMARY KEY,
+       state TEXT NOT NULL,
+       updated_at DATETIME(3) NOT NULL
+     )`,
+  ],
 ];
 
 // Migrations only need to run once per warm runtime; remember the promise so

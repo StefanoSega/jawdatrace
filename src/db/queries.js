@@ -383,3 +383,76 @@ export async function deleteDataForIssues(issueIds) {
   // Executions whose plan was deleted keep their runs but lose the plan reference.
   await query(`UPDATE test_execution SET plan_issue_id = NULL WHERE plan_issue_id IN (${list})`, issueIds);
 }
+
+// ---------------------------------------------------------------------------
+// Data import (bulk, idempotent inserts; one statement per page)
+// ---------------------------------------------------------------------------
+
+/** Many (plan, test) pairs in one statement; existing pairs are ignored. */
+export async function insertPlanTestPairs(pairs) {
+  if (pairs.length === 0) return;
+  const now = toSqlDateTime();
+  await query(
+    `INSERT IGNORE INTO plan_test (plan_issue_id, test_issue_id, added_at)
+     VALUES ${pairs.map(() => '(?, ?, ?)').join(', ')}`,
+    pairs.flatMap((pair) => [pair.planIssueId, pair.testIssueId, now])
+  );
+}
+
+/** Many execution memberships in one statement; existing rows keep their order. */
+export async function insertExecutionTestRows(rows) {
+  if (rows.length === 0) return;
+  const now = toSqlDateTime();
+  await query(
+    `INSERT IGNORE INTO execution_test (execution_issue_id, test_issue_id, sort_order, added_at)
+     VALUES ${rows.map(() => '(?, ?, ?, ?)').join(', ')}`,
+    rows.flatMap((row) => [row.executionIssueId, row.testIssueId, row.sortOrder, now])
+  );
+}
+
+/**
+ * Many runs in one statement. Idempotent through the unique key
+ * (test_issue_id, client_request_id): importing the same run again is a no-op.
+ *
+ * @returns {Promise<number>} rows actually inserted
+ */
+export async function insertRuns(runs) {
+  if (runs.length === 0) return 0;
+  const result = await query(
+    `INSERT IGNORE INTO test_run
+       (id, test_issue_id, execution_issue_id, status, comment, evidence, steps_revision,
+        executed_by, executed_at, client_request_id, schema_version)
+     VALUES ${runs.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+    runs.flatMap((run) => [
+      run.id,
+      run.testIssueId,
+      run.executionIssueId ?? null,
+      run.status,
+      run.comment ?? null,
+      JSON.stringify(run.evidence),
+      null,
+      run.executedBy,
+      toSqlDateTime(run.executedAt),
+      run.clientRequestId,
+      DATA_SCHEMA_VERSION,
+    ])
+  );
+  return result?.affectedRows ?? 0;
+}
+
+/** The import job of a project (state is a JSON object), or null. */
+export async function selectImportJob(projectKey) {
+  const rows = await query('SELECT state, updated_at FROM import_job WHERE project_key = ?', [projectKey]);
+  if (rows.length === 0) return null;
+  return { ...JSON.parse(rows[0].state), updatedAt: fromSqlDateTime(rows[0].updated_at) };
+}
+
+/** Create or replace the import job of a project. */
+export async function saveImportJob(job) {
+  const { updatedAt, ...state } = job;
+  await query(
+    `INSERT INTO import_job (project_key, state, updated_at) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE state = VALUES(state), updated_at = VALUES(updated_at)`,
+    [state.projectKey, JSON.stringify(state), toSqlDateTime()]
+  );
+}

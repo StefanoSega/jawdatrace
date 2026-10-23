@@ -62,15 +62,16 @@ export async function jira(as, path, options = {}) {
  * @param {'user' | 'app'} as
  * @param {string[]} issueIds
  * @param {string[]} fields - e.g. ['issuetype'] or ['summary', 'status']
+ * @param {string[]} [properties] - issue property keys to include
  * @returns {Promise<object[]>}
  */
-export async function bulkFetchIssues(as, issueIds, fields) {
+export async function bulkFetchIssues(as, issueIds, fields, properties = []) {
   const issues = [];
   for (let index = 0; index < issueIds.length; index += 100) {
     const chunk = issueIds.slice(index, index + 100);
     const result = await jira(as, route`/rest/api/3/issue/bulkfetch`, {
       method: 'POST',
-      body: { issueIdsOrKeys: chunk, fields },
+      body: { issueIdsOrKeys: chunk, fields, ...(properties.length ? { properties } : {}) },
     });
     issues.push(...(result?.issues ?? []));
   }

@@ -73,4 +73,22 @@ How to read these numbers:
   - The purge runs in batches of 100 issue references. It checks each issue as the app, so issues the app itself cannot access are treated as deleted.
 - **Uninstall:** removes the app's Forge storage, following Forge's data retention policy.
 - **Export:** not implemented in the MVP. Deferred by design.
-- **Import from other tools:** out of scope.
+- **Import from other tools:** see Data import below.
+
+## Data import
+
+Jira admins can import Test steps, Test Set and Test Plan membership, Test Executions and runs from another tool. The format is described in `docs/IMPORT_FORMAT.md`.
+
+**Runbook**
+1. Produce one or more `jawdatrace-import*.json` files, each at most 10 MB. Split large exports; files are imported in name order.
+2. Attach them to any issue in the target project, for example a "Migration" task.
+3. In **Jira settings → Apps → jawdatrace setup → Import data**, enter the project key and that issue's key, then click **Start import**.
+4. Click **Refresh status** until the status is `done`. `waiting` means Jira rate-limited the import; it continues by itself after 2 minutes. `failed` shows the file and entry that was rejected; fix the file, re-attach it, and click **Start import** again.
+5. Review the counters. `skipped` counts entries whose issues are missing, in another project, or of the wrong issue type.
+
+Re-running is safe: Tests that already have steps keep them, existing links and memberships are not duplicated, and runs are keyed by their `id` in the file (`client_request_id = imp:<id>`), so the same run is never inserted twice. A run whose status changed in the source tool must get a new `id` to be imported again; the newest run then wins.
+
+**Cost**
+- One queue invocation per ~9 minutes of work. Each page of 100 entries costs one Jira bulk fetch plus one SQL statement (one per Execution for the executions section), one bulk property write for steps, and one Jira POST per new Test Set link.
+- Rough guide: 10k Tests and 75k runs is about 1,000 pages, which takes tens of minutes and a handful of invocations.
+- Progress lives in the `import_job` SQL table, one row per project.

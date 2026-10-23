@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       '@forge/api': fileURLToPath(new URL('./test/mocks/forge-api.js', import.meta.url)),
       '@forge/sql': fileURLToPath(new URL('./test/mocks/forge-sql.js', import.meta.url)),
+      '@forge/events': fileURLToPath(new URL('./test/mocks/forge-events.js', import.meta.url)),
     },
   },
   test: {
