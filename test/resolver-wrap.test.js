@@ -27,6 +27,19 @@ describe('wrap', () => {
     expect(response).toEqual({ ok: true, data: { payload: { a: 1 }, accountId: 'acc-1' } });
   });
 
+  it('refuses every call while the license is inactive, and allows active or missing licenses', async () => {
+    const fn = vi.fn(async () => 'ran');
+    const handler = wrap('test', fn, { needsSql: false });
+
+    const refused = await handler({ payload: {}, context: { license: { active: false } } });
+    expect(refused).toEqual({ ok: false, error: { code: 'LICENSE_INACTIVE', message: expect.stringContaining('not active') } });
+    expect(fn).not.toHaveBeenCalled();
+
+    expect((await handler({ payload: {}, context: { license: { active: true, isEvaluation: true } } })).ok).toBe(true);
+    // No license object: development/staging, or a direct install.
+    expect((await handler({ payload: {}, context: {} })).ok).toBe(true);
+  });
+
   it('logs only a short line for unexpected errors', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const handler = wrap('boom', async () => {

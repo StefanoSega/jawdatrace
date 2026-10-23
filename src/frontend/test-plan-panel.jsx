@@ -49,6 +49,7 @@ import {
   formatDate,
 } from './shared/components';
 import TestPicker from './shared/TestPicker';
+import { LicenseGate } from './shared/LicenseGate';
 
 const ALL_ENVIRONMENTS = { label: 'All environments', value: '' };
 
@@ -360,4 +361,8 @@ function App() {
 }
 
 // No React.StrictMode: it runs effects twice in development, doubling Jira requests.
-ForgeReconciler.render(<App />);
+ForgeReconciler.render(
+  <LicenseGate>
+    <App />
+  </LicenseGate>
+);

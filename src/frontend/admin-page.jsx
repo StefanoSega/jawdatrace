@@ -8,6 +8,8 @@
  *    (docs/IMPORT_FORMAT.md). The work runs in a queue consumer; this page
  *    only starts it and shows progress when the admin presses "Refresh"
  *    (no polling).
+ *  - Exports a project's app data as `jawdatrace-export-*.json` attachments
+ *    (same format, so an export can be imported again).
  */
 import React, { useEffect, useState } from 'react';
 import ForgeReconciler, {
@@ -28,6 +30,7 @@ import ForgeReconciler, {
 } from '@forge/react';
 import { callResolver, errorMessage } from './shared/api';
 import { ErrorBanner, Loading, formatDate } from './shared/components';
+import { LicenseGate } from './shared/LicenseGate';
 
 function ExistsLozenge({ exists }) {
   return <Lozenge appearance={exists ? 'success' : 'removed'}>{exists ? 'Exists' : 'Missing'}</Lozenge>;
@@ -226,7 +229,7 @@ function ImportSection() {
       <Heading size="medium">Import data</Heading>
       <Text>
         Imports Test steps, Test Set and Test Plan membership, Test Executions and their runs from
-        jawdatrace-import*.json files attached to a Jira issue (see the import format documentation). Existing data is
+        jawdatrace-import*.json (or jawdatrace-export*.json) files attached to a Jira issue (see the import format documentation). Existing data is
         kept and re-running is safe. Entries whose issues are missing, in another project or of the wrong type are
         skipped.
       </Text>
@@ -287,15 +290,110 @@ function ImportSection() {
   );
 }
 
+const EXPORT_COUNT_LABELS = [
+  ['tests', 'Tests with steps'],
+  ['setMembers', 'Test Sets with members'],
+  ['planTests', 'Test Plans with members'],
+  ['executions', 'Test Executions'],
+  ['runs', 'Runs'],
+];
+
+function ExportSection() {
+  // Text inputs are uncontrolled (defaultValue + onChange): see CLAUDE.md.
+  const [projectKey, setProjectKey] = useState('');
+  const [issueKey, setIssueKey] = useState('');
+  const [state, setState] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  const act = async (name, fn) => {
+    setBusy(name);
+    setError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const start = () => act('start', async () => setState((await callResolver('startExport', { projectKey, issueKey })).state));
+  const refresh = () =>
+    act('refresh', async () => setState((await callResolver('getExportState', { projectKey })).state));
+
+  return (
+    <Stack space="space.200">
+      <Heading size="medium">Export data</Heading>
+      <Text>
+        Attaches a project's Test steps, Test Set and Test Plan membership, Test Executions and runs to a Jira issue as
+        jawdatrace-export-*.json files, in the same format as the import. Evidence references are not included; evidence
+        files are attachments on the Tests. The files contain the account ids of the people who recorded runs, so choose
+        an issue that only the right people can see.
+      </Text>
+      <ErrorBanner error={error} />
+      <Label labelFor="export-project">Project key</Label>
+      <Textfield id="export-project" defaultValue="" onChange={(e) => setProjectKey(e.target.value.trim().toUpperCase())} />
+      <Label labelFor="export-issue">Issue to attach the export to</Label>
+      <Textfield id="export-issue" defaultValue="" onChange={(e) => setIssueKey(e.target.value.trim().toUpperCase())} />
+      <ButtonGroup>
+        <LoadingButton appearance="primary" isLoading={busy === 'start'} isDisabled={!projectKey || !issueKey} onClick={start}>
+          Start export
+        </LoadingButton>
+        <Button isDisabled={!projectKey || busy !== null} onClick={refresh}>
+          Refresh status
+        </Button>
+      </ButtonGroup>
+      {state && (
+        <Stack space="space.100">
+          <Inline space="space.100" alignBlock="center" shouldWrap>
+            <Text>
+              {state.projectKey} to {state.targetIssueKey}
+            </Text>
+            <Lozenge appearance={IMPORT_STATUS_APPEARANCE[state.status] ?? 'default'}>{state.status}</Lozenge>
+            <Text>
+              {state.status === 'done' ? `${state.files} file(s) attached. ` : ''}
+              {state.error ? `(${state.error}) ` : ''}Last update: {formatDate(state.updatedAt ?? state.startedAt)}.
+            </Text>
+          </Inline>
+          {state.status === 'done' && (
+            <DynamicTable
+              caption="Exported"
+              head={{
+                cells: [
+                  { key: 'what', content: 'What' },
+                  { key: 'count', content: 'Count' },
+                ],
+              }}
+              rows={EXPORT_COUNT_LABELS.map(([key, label]) => ({
+                key,
+                cells: [
+                  { key: 'what', content: label },
+                  { key: 'count', content: String(state.counts?.[key] ?? 0) },
+                ],
+              }))}
+            />
+          )}
+        </Stack>
+      )}
+    </Stack>
+  );
+}
+
 function App() {
   return (
     <Stack space="space.400">
       <SetupSection />
       <PurgeSection />
       <ImportSection />
+      <ExportSection />
     </Stack>
   );
 }
 
 // No React.StrictMode: it runs effects twice in development, doubling Jira requests.
-ForgeReconciler.render(<App />);
+ForgeReconciler.render(
+  <LicenseGate>
+    <App />
+  </LicenseGate>
+);

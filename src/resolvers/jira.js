@@ -85,17 +85,19 @@ export async function bulkFetchIssues(as, issueIds, fields, properties = []) {
  * @param {string} jql
  * @param {string[]} fields - keep this minimal; [] returns ids only
  * @param {number} maxResults - hard cap across pages
+ * @param {{ as?: 'user' | 'app', properties?: string[] }} [options] - 'app' only after an explicit permission check
  */
-export async function searchJql(jql, fields, maxResults) {
+export async function searchJql(jql, fields, maxResults, { as = 'user', properties = [] } = {}) {
   const issues = [];
   let nextPageToken;
   do {
-    const page = await jira('user', route`/rest/api/3/search/jql`, {
+    const page = await jira(as, route`/rest/api/3/search/jql`, {
       method: 'POST',
       body: {
         jql,
         fields: fields.length ? fields : ['id'],
         maxResults: Math.min(100, maxResults - issues.length),
+        ...(properties.length ? { properties } : {}),
         ...(nextPageToken ? { nextPageToken } : {}),
       },
     });

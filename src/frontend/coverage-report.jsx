@@ -35,6 +35,7 @@ import { ErrorBanner, IssueLink, OverallLozenge, StatusLozenge, formatDate } fro
 import { getTestSetMembers, jqlString, linkedIssues, searchAll, searchPage, toRow } from './shared/jira';
 import ScopePicker from './shared/ScopePicker';
 import { fetchStatuses } from './shared/useStatuses';
+import { LicenseGate } from './shared/LicenseGate';
 
 // Fixed slice colours that match the status lozenges (otherwise the chart
 // assigns arbitrary colours, e.g. "Failed" in blue). Keys are the slice labels.
@@ -338,4 +339,8 @@ function App() {
 }
 
 // No React.StrictMode: it runs effects twice in development, doubling Jira requests.
-ForgeReconciler.render(<App />);
+ForgeReconciler.render(
+  <LicenseGate>
+    <App />
+  </LicenseGate>
+);

@@ -42,6 +42,7 @@ import {
 import ExecuteForm from './shared/ExecuteForm';
 import { searchIssuesOfType } from './shared/jira';
 import TestPicker from './shared/TestPicker';
+import { LicenseGate } from './shared/LicenseGate';
 
 /** Modal to change the execution's Test Plan and environment. */
 function SettingsModal({ executionIssueId, projectId, projectKey, current, onClose, onSaved }) {
@@ -357,4 +358,8 @@ function App() {
 }
 
 // No React.StrictMode: it runs effects twice in development, doubling Jira requests.
-ForgeReconciler.render(<App />);
+ForgeReconciler.render(
+  <LicenseGate>
+    <App />
+  </LicenseGate>
+);

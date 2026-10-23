@@ -22,7 +22,9 @@
  *
  * IDEMPOTENT: Tests that already have steps keep them, existing links are not
  * recreated, SQL inserts are INSERT IGNORE, and each run is keyed by
- * client_request_id = "imp:<run id from the file>". Re-running is safe.
+ * client_request_id = "imp:<run id from the file>". Re-running is safe. Runs
+ * from a jawdatrace export carry their original UUID, which is reused as the
+ * row id, so importing an export into its own site is a no-op too.
  *
  * AUTHORIZATION: only a Jira admin can start or resume an import (checked in
  * the resolver). Here we act AS THE APP, because there is no user in a queue
@@ -48,6 +50,7 @@ import { EVIDENCE_VERSION, ValidationError } from '../shared/evidence';
 import { FILE_MAX_BYTES, isProjectKey, parseImportFile } from './format';
 
 export const QUEUE_KEY = 'data-import';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const PAGE_SIZE = 100;
 
 /** Sections of a file, in the order they are imported. */
@@ -257,7 +260,9 @@ async function importRuns(page, job, counts) {
       members.push({ executionIssueId: run.executionId, testIssueId: run.testId, sortOrder: job.offset + index + 1 });
     }
     runs.push({
-      id: randomUUID(),
+      // A UUID id comes from a jawdatrace export: keep it as the row id, so
+      // importing an export into the site it came from adds nothing.
+      id: UUID_PATTERN.test(run.id) ? run.id.toLowerCase() : randomUUID(),
       testIssueId: run.testId,
       executionIssueId: run.executionId,
       status: run.status,

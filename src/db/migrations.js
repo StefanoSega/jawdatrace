@@ -78,6 +78,15 @@ const MIGRATIONS = [
        updated_at DATETIME(3) NOT NULL
      )`,
   ],
+  [
+    // Progress of an admin-started data export, one row per project.
+    'v006_create_export_job',
+    `CREATE TABLE IF NOT EXISTS export_job (
+       project_key VARCHAR(50) NOT NULL PRIMARY KEY,
+       state TEXT NOT NULL,
+       updated_at DATETIME(3) NOT NULL
+     )`,
+  ],
 ];
 
 // Migrations only need to run once per warm runtime; remember the promise so

@@ -17,7 +17,7 @@ import {
   User,
   xcss,
 } from '@forge/react';
-import { OVERALL, TODO } from '../../shared/constants';
+import { OVERALL, TODO, UNKNOWN_ACCOUNT } from '../../shared/constants';
 import { ratio } from '../../shared/status';
 
 const STATUS_APPEARANCE = {
@@ -105,6 +105,16 @@ function CountBadge({ label, value, appearance }) {
 }
 
 /**
+ * Who recorded a run. Accounts closed since then are stored as "unknown"
+ * (src/privacy/report.js), and show as "Former user".
+ */
+export function RunAuthor({ accountId }) {
+  if (!accountId) return null;
+  if (accountId === UNKNOWN_ACCOUNT) return <Text>Former user</Text>;
+  return <User accountId={accountId} />;
+}
+
+/**
  * "Last run" table cell: who ran it, with the date underneath. One column
  * instead of two keeps wide tables inside a narrow issue panel.
  */
@@ -112,7 +122,7 @@ export function LastRun({ run }) {
   if (!run) return <Text>—</Text>;
   return (
     <Stack space="space.050">
-      {run.executedBy ? <User accountId={run.executedBy} /> : null}
+      <RunAuthor accountId={run.executedBy} />
       <Text size="small">{formatDate(run.executedAt)}</Text>
     </Stack>
   );

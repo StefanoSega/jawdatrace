@@ -48,7 +48,7 @@ Jira is the source of truth. Only app-specific data goes into Forge storage.
 | Steps | Issue property `jawdatrace.steps` on the Test: `{ v, revision, steps[] }`. Read and written directly from the UI as the user. Saves check `revision` first, but this is best effort, not atomic. |
 | Test Set membership | Jira link type **"Test Set"** (`contains` / `is contained in`) |
 | Story→Test/Set traceability | Jira link type **"Test"** (`tests` / `is tested by`) |
-| Test runs and plan/execution data | Forge SQL tables `test_run` (insert-only), `test_execution`, `execution_test`, `plan_test`; import progress in `import_job` |
+| Test runs and plan/execution data | Forge SQL tables `test_run` (insert-only), `test_execution`, `execution_test`, `plan_test`; import/export progress in `import_job` / `export_job` |
 
 Link direction is easy to get backwards. When you create a link, the `inwardIssue` is the one described by the outward text, so `createLink(LINK_TYPES.TEST, testId, storyId)` means "Test tests Story". When you read links, use `linkedIssues(links, name, 'outward' | 'inward')` in `src/frontend/shared/jira.js`.
 
@@ -78,12 +78,12 @@ Resolvers return `{ ok, data }` or `{ ok: false, error: { code, message } }` via
 - Jira reads that don't involve app data happen in the UI through `requestJira`, not through resolvers.
 - Batch: one bulk fetch per 100 issues and one SQL statement per view. Never one request per Test.
 - Paginate run history with an opaque keyset cursor.
-- No polling, scheduled jobs or webhooks. The one exception is the admin-started data import queue (`src/importer/worker.js`, see `docs/OPERATIONS.md` → Data import).
+- No polling, scheduled jobs or webhooks. The approved exceptions are the admin-started data import and export queues (`src/importer/worker.js`, `src/exporter/worker.js`) and the weekly personal data report (`src/privacy/report.js`); see `docs/OPERATIONS.md`.
 - Don't wrap panels in `React.StrictMode`, because it doubles effect requests in dev.
 
 ### Testing
 
-Unit tests in `test/` run under vitest. `vitest.config.mjs` aliases `@forge/api`, `@forge/sql` and `@forge/events` to the in-memory mocks in `test/mocks/`. Use `setJiraHandler` / `setSqlHandler` to script responses, and assert on `jiraCalls` / `sqlCalls` / `pushedEvents`. When a bug is found on the dev site, add a regression test that reproduces the real data (see the "regression: dev-site Plan JDT-7" test in `test/status-resolver.test.js`).
+Unit tests in `test/` run under vitest. `vitest.config.mjs` aliases `@forge/api`, `@forge/sql` and `@forge/events` to the in-memory mocks in `test/mocks/`. Use `setJiraHandler` / `setSqlHandler` / `setPrivacyHandler` to script responses, and assert on `jiraCalls` / `sqlCalls` / `pushedEvents` / `privacyCalls`. When a bug is found on the dev site, add a regression test that reproduces the real data (see the "regression: dev-site Plan JDT-7" test in `test/status-resolver.test.js`).
 
 There are no UI component tests, and the mocks can't catch Forge SQL or Jira expression quirks. After deploying, check UI and SQL changes on the dev site using the `verify-on-dev-site` skill.
 
@@ -91,7 +91,9 @@ There are no UI component tests, and the mocks can't catch Forge SQL or Jira exp
 
 - **UI Kit only:** use components from `@forge/react`. No HTML elements, no `@forge/ui`, no third-party React components. Use `DynamicTable` (there is no `Table`). Use `<Text weight="bold">` instead of the deprecated `Strong`. Use `xcss()` for `Box` styles. Hooks come from `react`.
 - **Text inputs must be uncontrolled.** Give `Textfield` and `TextArea` a `defaultValue` plus an `onChange`, never a `value`. A controlled `value` drops keystrokes, so only the last character survives fast typing, because each keystroke round-trips through the UI Kit bridge. To clear or prefill an input from code, change its `key` to remount it. `Select`, `Checkbox` and `RadioGroup` are fine controlled.
-- Prefer `.asUser()`. If you use `.asApp()` on a user's behalf, check permissions explicitly. Keep scopes minimal: currently `read:jira-work`, `write:jira-work`, and `manage:jira-configuration` (setup only).
+- Prefer `.asUser()`. If you use `.asApp()` on a user's behalf, check permissions explicitly. Keep scopes minimal: currently `read:jira-work`, `write:jira-work`, `manage:jira-configuration` (setup only) and `report:personal-data` (weekly privacy report). No external network access.
+- **Licensing:** `app.licensing.enabled`. `wrap()` in `src/resolvers/index.js` refuses every resolver call while `context.license.active === false`, and `LicenseGate` wraps every UI module (`src/shared/license.js`). No license object (development, staging, direct installs) means allowed.
+- **Personal data:** store account ids only, never names or emails. Closed accounts become `UNKNOWN_ACCOUNT` ("unknown"); render authors with `RunAuthor`. A new table or field holding account ids must be added to `src/privacy/report.js`.
 - Custom UI is not allowed.
 - Code style: vanilla JavaScript with thorough comments aimed at intermediate JS developers who are new to Forge.
 

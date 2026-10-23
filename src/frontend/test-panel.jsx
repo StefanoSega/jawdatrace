@@ -30,15 +30,15 @@ import ForgeReconciler, {
   Tabs,
   Text,
   TextArea,
-  User,
   useProductContext,
 } from '@forge/react';
 import { LINK_TYPES } from '../shared/constants';
 import { callResolver, errorMessage } from './shared/api';
-import { ErrorBanner, IssueLink, Loading, StatusLozenge, formatDate } from './shared/components';
+import { ErrorBanner, IssueLink, Loading, RunAuthor, StatusLozenge, formatDate } from './shared/components';
 import EvidenceList from './shared/EvidenceList';
 import ExecuteForm from './shared/ExecuteForm';
 import { getAttachments, getIssueLinks, getSteps, linkedIssues, saveSteps } from './shared/jira';
+import { LicenseGate } from './shared/LicenseGate';
 
 // ---------------------------------------------------------------------------
 // Steps tab
@@ -273,7 +273,7 @@ function RunsTab({ issueId }) {
           cells: [
             { key: 'when', content: formatDate(run.executedAt) },
             { key: 'status', content: <StatusLozenge status={run.status} /> },
-            { key: 'by', content: <User accountId={run.executedBy} /> },
+            { key: 'by', content: <RunAuthor accountId={run.executedBy} /> },
             {
               key: 'execution',
               content: run.execution?.restricted ? (
@@ -408,4 +408,8 @@ function App() {
 }
 
 // No React.StrictMode: it runs effects twice in development, doubling Jira requests.
-ForgeReconciler.render(<App />);
+ForgeReconciler.render(
+  <LicenseGate>
+    <App />
+  </LicenseGate>
+);

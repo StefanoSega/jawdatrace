@@ -72,7 +72,8 @@ How to read these numbers:
   - To remove the data itself, go to **Jira settings → Apps → jawdatrace setup** and click **Purge data for deleted issues**.
   - The purge runs in batches of 100 issue references. It checks each issue as the app, so issues the app itself cannot access are treated as deleted.
 - **Uninstall:** removes the app's Forge storage, following Forge's data retention policy.
-- **Export:** not implemented in the MVP. Deferred by design.
+- **Export:** see Data export below.
+- **Personal data:** see Personal data reporting below.
 - **Import from other tools:** see Data import below.
 
 ## Data import
@@ -92,3 +93,29 @@ Re-running is safe: Tests that already have steps keep them, existing links and 
 - One queue invocation per ~9 minutes of work. Each page of 100 entries costs one Jira bulk fetch plus one SQL statement (one per Execution for the executions section), one bulk property write for steps, and one Jira POST per new Test Set link.
 - Rough guide: 10k Tests and 75k runs is about 1,000 pages, which takes tens of minutes and a handful of invocations.
 - Progress lives in the `import_job` SQL table, one row per project.
+
+## Data export
+
+Jira admins can export a project's app data from **Jira settings → Apps → jawdatrace setup → Export data**. The export covers Test steps, Test Set and Test Plan membership, Test Executions (plan, environment, members) and all runs. It is attached to an issue the admin chooses, as `jawdatrace-export-<timestamp>-NNN.json` files of about 5 MB each, in the import format. Files from an export can be imported again; runs keep their ids, so importing an export into its own site adds nothing.
+
+- **Not exported:** evidence references (the evidence files are Jira attachments on the Tests).
+- **Account ids:** the files contain the account ids of the people who recorded runs, so attach them to an issue with suitable visibility, and delete the attachments when they're no longer needed.
+- **Cost:** one queue invocation per export. It makes one JQL page per 100 Tests, Sets or Plans, one SQL statement per 100 Executions, Plans or Tests, and one attachment upload per file.
+- **Limit:** the export runs in one invocation (15 minutes). A project too large for that fails with a code shown on the admin page.
+- Progress is stored in the `export_job` SQL table, one row per project.
+
+## Personal data reporting
+
+The app stores Atlassian account ids only, never names or emails:
+- `test_run.executed_by`
+- `test_execution.created_by`
+- the import job's `startedBy`
+
+As Atlassian's user privacy guidelines require, a weekly scheduled trigger (`src/privacy/report.js`, scope `report:personal-data`) reports these ids, 90 per request. For every account Atlassian reports as closed, the id is replaced with `unknown` in all three places; the UI then shows "Former user". Runs themselves are kept as project history.
+
+- **Cost:** one invocation a week, one SQL page per 900 accounts and one report call per 90 accounts.
+- **Failures:** if a run fails (for example because of rate limiting), it logs one line and the next weekly run tries again.
+
+## Licensing
+
+The app is paid via Atlassian (`app.licensing.enabled`). When a site's license is inactive, every resolver call returns `LICENSE_INACTIVE` and every module shows a notice. Development and staging installs, and direct installs, have no license object and are not restricted. To test licensing, install with `forge install --license active|inactive` in a non-production environment.

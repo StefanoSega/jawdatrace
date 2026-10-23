@@ -16,24 +16,37 @@ import { addPlanTests, getPlan, getTestPlans, listPlanExecutions, removePlanTest
 import { getRuns, recordRun } from './runs';
 import { getSetupState, purgeOrphans, runSetup } from './setup';
 import { getStatuses } from './status';
+import { LICENSE_MESSAGE, isLicenseInactive } from '../shared/license';
 import { getImportState, startImport } from './dataImport';
+import { getExportState, startExport } from './dataExport';
 
 /** Turn any thrown error into a safe, user-facing error object. Exported for tests. */
 export function toErrorResponse(error) {
   const code = error?.code ?? 'INTERNAL';
   // Only messages we wrote ourselves are shown; anything else is generic.
-  const known = ['VALIDATION', 'FORBIDDEN', 'NOT_FOUND_OR_FORBIDDEN'];
+  const known = ['VALIDATION', 'FORBIDDEN', 'NOT_FOUND_OR_FORBIDDEN', 'LICENSE_INACTIVE'];
   const message = known.includes(code) ? error.message : 'Something went wrong. Please try again.';
   return { ok: false, error: { code, message } };
+}
+
+/** Thrown when the site's Marketplace license is inactive (src/shared/license.js). */
+export class LicenseError extends Error {
+  constructor() {
+    super(LICENSE_MESSAGE);
+    this.name = 'LicenseError';
+    this.code = 'LICENSE_INACTIVE';
+  }
 }
 
 /**
  * Wrap a function so it receives (payload, accountId) and returns a uniform
  * response. `needsSql` lets pure-Jira resolvers (setup state) skip migrations.
+ * Every call is refused while the site's license is inactive.
  */
 export function wrap(name, fn, { needsSql = true } = {}) {
   return async ({ payload, context }) => {
     try {
+      if (isLicenseInactive(context?.license)) throw new LicenseError();
       if (needsSql) await runMigrations();
       return { ok: true, data: await fn(payload ?? {}, context?.accountId) };
     } catch (error) {
@@ -76,5 +89,8 @@ resolver.define('purgeOrphans', wrap('purgeOrphans', purgeOrphans));
 // Data import (admin; the work happens in the queue consumer)
 resolver.define('getImportState', wrap('getImportState', getImportState));
 resolver.define('startImport', wrap('startImport', startImport));
+// Data export (admin; the work happens in the queue consumer)
+resolver.define('getExportState', wrap('getExportState', getExportState));
+resolver.define('startExport', wrap('startExport', startExport));
 
 export const handler = resolver.getDefinitions();

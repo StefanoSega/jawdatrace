@@ -71,12 +71,28 @@ modules:
     - key: importWorker
       handler: index.importWorker
       timeoutSeconds: 900
+    # Admin-started data export; one invocation per export.
+    - key: exportWorker
+      handler: index.exportWorker
+      timeoutSeconds: 900
+    - key: privacyReport
+      handler: index.privacyReport
+      timeoutSeconds: 300
   # Queue for the data import. Fed only by an admin pressing Start/Resume and
   # by the worker continuing itself; nothing is scheduled.
   consumer:
     - key: data-import-consumer
       queue: data-import
       function: importWorker
+    - key: data-export-consumer
+      queue: data-export
+      function: exportWorker
+  # Weekly report of stored account ids to Atlassian (user privacy
+  # guidelines); closed accounts are anonymised. See src/privacy/report.js.
+  scheduledTrigger:
+    - key: personal-data-report
+      function: privacyReport
+      interval: week
   # Run SQL migrations when the app is installed or upgraded.
   trigger:
     - key: jawdatrace-lifecycle
@@ -109,7 +125,13 @@ permissions:
     - write:jira-work
     # Admin setup only: create issue types and issue link types.
     - manage:jira-configuration
+    # Weekly personal data report (account ids only).
+    - report:personal-data
 app:
+  # Paid via Atlassian: Forge adds a `license` to every context. Resolvers and
+  # the UI refuse to work while it is inactive (src/shared/license.js).
+  licensing:
+    enabled: true
   runtime:
     name: nodejs24.x
     memoryMB: 256

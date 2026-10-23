@@ -151,6 +151,18 @@ describe('importPage', () => {
     expect(job).toMatchObject({ fileIndex: 1, section: 'tests', offset: 0 });
   });
 
+  it('reuses UUID run ids from an export as the row id', async () => {
+    setJiraHandler((as, path, init) => ({ body: bulkfetch(init.body) }));
+    setSqlHandler(() => ({ affectedRows: 0 }));
+    const uuid = '41F9E6AE-8950-4C1B-9D5A-0123456789AB';
+    const run = { testId: '1', executionId: null, status: 'PASS', executedBy: null, executedAt: '2026-10-01T10:00:00.000Z', comment: null };
+    await importPage({ runs: [{ ...run, id: uuid }, { ...run, id: 'x1:P:abc' }] }, baseJob({ section: 'runs' }));
+    const insert = sqlCalls.find((call) => call.query.includes('INTO test_run'));
+    expect(insert.params[0]).toBe(uuid.toLowerCase());
+    expect(insert.params[11]).not.toBe('x1:P:abc'); // other ids get a fresh row id
+    expect(insert.params[11]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
   it('pages through a section 100 entries at a time', async () => {
     setJiraHandler((as, path, init) => ({ body: bulkfetch(init.body) }));
     const data = { planTests: Array.from({ length: 150 }, () => ({ planId: '60', testId: '1' })) };

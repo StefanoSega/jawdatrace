@@ -74,7 +74,9 @@ async function listImportFiles(issueKey, projectKey) {
   const files = (issue.fields.attachment ?? [])
     .filter((attachment) => FILE_NAME_PATTERN.test(String(attachment.filename)))
     .sort((a, b) => String(a.filename).localeCompare(String(b.filename)));
-  if (files.length === 0) throw new ValidationError(`${issueKey} has no jawdatrace-import*.json attachments.`);
+  if (files.length === 0) {
+    throw new ValidationError(`${issueKey} has no jawdatrace-import*.json or jawdatrace-export*.json attachments.`);
+  }
   if (files.length > FILES_MAX) throw new ValidationError(`At most ${FILES_MAX} import files per issue.`);
   const tooLarge = files.find((file) => Number(file.size) > FILE_MAX_BYTES);
   if (tooLarge) throw new ValidationError(`${tooLarge.filename} is larger than 10 MB; split it.`);

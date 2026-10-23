@@ -17,8 +17,8 @@ import { ValidationError } from '../shared/evidence';
 export const IMPORT_FORMAT = 'jawdatrace-import';
 export const IMPORT_FORMAT_VERSION = 1;
 
-/** Attachments with this name are picked up, in name order. */
-export const FILE_NAME_PATTERN = /^jawdatrace-import.*\.json$/i;
+/** Attachments with these names are picked up, in name order (exports can be imported again). */
+export const FILE_NAME_PATTERN = /^jawdatrace-(import|export).*\.json$/i;
 export const FILE_MAX_BYTES = 10 * 1024 * 1024;
 export const FILES_MAX = 50;
 

@@ -456,3 +456,117 @@ export async function saveImportJob(job) {
     [state.projectKey, JSON.stringify(state), toSqlDateTime()]
   );
 }
+
+/** Every import job (one per project; a handful of rows at most). */
+export async function selectImportJobs() {
+  const rows = await query('SELECT state, updated_at FROM import_job');
+  return rows.map((row) => ({ ...JSON.parse(row.state), updatedAt: fromSqlDateTime(row.updated_at) }));
+}
+
+// ---------------------------------------------------------------------------
+// Personal data (src/privacy/report.js)
+// ---------------------------------------------------------------------------
+
+/**
+ * Distinct account ids stored in runs and executions, paged by id, with the
+ * oldest time each was stored (what the reporting API calls `updatedAt`).
+ * The placeholder `excludeId` ("unknown") is never reported.
+ */
+export async function selectStoredAccounts(afterId, limit, excludeId = 'unknown') {
+  const rows = await query(
+    `SELECT account_id, MIN(stored_at) AS stored_since FROM (
+       SELECT executed_by AS account_id, executed_at AS stored_at FROM test_run
+       UNION ALL SELECT created_by, created_at FROM test_execution
+     ) accounts
+     WHERE account_id > ? AND account_id <> ?
+     GROUP BY account_id
+     ORDER BY account_id
+     LIMIT ${toLimit(limit)}`,
+    [afterId ?? '', excludeId]
+  );
+  return rows.map((row) => ({ accountId: row.account_id, storedSince: fromSqlDateTime(row.stored_since) }));
+}
+
+/** Replace closed accounts' ids with a placeholder in runs and executions. */
+export async function anonymiseAccountsInTables(accountIds, replacement) {
+  if (accountIds.length === 0) return;
+  const list = placeholders(accountIds.length);
+  await query(`UPDATE test_run SET executed_by = ? WHERE executed_by IN (${list})`, [replacement, ...accountIds]);
+  await query(`UPDATE test_execution SET created_by = ? WHERE created_by IN (${list})`, [replacement, ...accountIds]);
+}
+
+// ---------------------------------------------------------------------------
+// Data export (src/exporter/worker.js); ids come from the job's project only
+// ---------------------------------------------------------------------------
+
+/** All Executions of a project with their plan and environment. */
+export async function selectProjectExecutions(projectId) {
+  return query(
+    `SELECT execution_issue_id, plan_issue_id, environment FROM test_execution
+     WHERE project_id = ? ORDER BY execution_issue_id`,
+    [projectId]
+  );
+}
+
+/** Members of many Executions, in each Execution's order. */
+export async function selectExecutionMembers(executionIssueIds) {
+  if (executionIssueIds.length === 0) return [];
+  return query(
+    `SELECT execution_issue_id, test_issue_id FROM execution_test
+     WHERE execution_issue_id IN (${placeholders(executionIssueIds.length)})
+     ORDER BY execution_issue_id, sort_order, test_issue_id`,
+    executionIssueIds
+  );
+}
+
+/** Plan memberships of many Plans. */
+export async function selectPlanMembers(planIssueIds) {
+  if (planIssueIds.length === 0) return [];
+  return query(
+    `SELECT plan_issue_id, test_issue_id FROM plan_test
+     WHERE plan_issue_id IN (${placeholders(planIssueIds.length)})
+     ORDER BY plan_issue_id, test_issue_id`,
+    planIssueIds
+  );
+}
+
+const EXPORT_RUN_COLUMNS = 'id, test_issue_id, execution_issue_id, status, comment, executed_by, executed_at, client_request_id';
+
+/** Runs recorded in many Executions. */
+export async function selectRunsOfExecutions(executionIssueIds) {
+  if (executionIssueIds.length === 0) return [];
+  return query(
+    `SELECT ${EXPORT_RUN_COLUMNS} FROM test_run
+     WHERE execution_issue_id IN (${placeholders(executionIssueIds.length)})
+     ORDER BY executed_at, id`,
+    executionIssueIds
+  );
+}
+
+/** Ad-hoc runs (no Execution) of many Tests. */
+export async function selectAdHocRuns(testIssueIds) {
+  if (testIssueIds.length === 0) return [];
+  return query(
+    `SELECT ${EXPORT_RUN_COLUMNS} FROM test_run
+     WHERE execution_issue_id IS NULL AND test_issue_id IN (${placeholders(testIssueIds.length)})
+     ORDER BY executed_at, id`,
+    testIssueIds
+  );
+}
+
+/** The export job of a project, or null. */
+export async function selectExportJob(projectKey) {
+  const rows = await query('SELECT state, updated_at FROM export_job WHERE project_key = ?', [projectKey]);
+  if (rows.length === 0) return null;
+  return { ...JSON.parse(rows[0].state), updatedAt: fromSqlDateTime(rows[0].updated_at) };
+}
+
+/** Create or replace the export job of a project. */
+export async function saveExportJob(job) {
+  const { updatedAt, ...state } = job;
+  await query(
+    `INSERT INTO export_job (project_key, state, updated_at) VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE state = VALUES(state), updated_at = VALUES(updated_at)`,
+    [state.projectKey, JSON.stringify(state), toSqlDateTime()]
+  );
+}

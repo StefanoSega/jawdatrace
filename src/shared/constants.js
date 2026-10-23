@@ -49,6 +49,9 @@ export const RUN_STATUS = Object.freeze({
 export const RECORDABLE_STATUSES = Object.freeze(Object.values(RUN_STATUS));
 export const FINAL_STATUSES = Object.freeze([RUN_STATUS.PASS, RUN_STATUS.FAIL, RUN_STATUS.BLOCKED]);
 
+// Stored instead of the account id of a person whose Atlassian account was closed.
+export const UNKNOWN_ACCOUNT = 'unknown';
+
 // Display-only status for a Test that has no run in the current scope.
 export const TODO = 'TODO';
 

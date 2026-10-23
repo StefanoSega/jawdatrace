@@ -73,6 +73,8 @@ Defer automated test imports, CI/CD integrations, BDD, advanced Test Plans, comp
 
 *Approved exception (user decision, 2026-10-23): an admin-started **data import** from `jawdatrace-import*.json` attachments (`src/importer/`, format in `docs/IMPORT_FORMAT.md`), run through a Forge async-events queue. It is the app's only background work and only runs while an admin-started import is in progress. It needs no external network access and no extra scopes. See `docs/OPERATIONS.md` → Data import.*
 
+*Approved exceptions (user decision, 2026-10-23, for Marketplace readiness): an admin-started **data export** queue (`src/exporter/`), and a **weekly personal data report** scheduled trigger (`src/privacy/report.js`) required by Atlassian's user privacy guidelines. See `docs/OPERATIONS.md`.*
+
 Before adding a feature, explain its implementation cost, recurring Forge consumption, and maintenance implications.
 
 ## 6. Security and multi-tenancy

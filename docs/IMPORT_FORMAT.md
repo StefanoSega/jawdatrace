@@ -1,6 +1,6 @@
 # Import file format (version 1)
 
-The admin page's **Import data** reads JSON files named `jawdatrace-import*.json` that are attached to a Jira issue in the target project. Files are imported in name order. Each file is at most 10 MB and 100,000 entries; split larger exports. The runbook is in `docs/OPERATIONS.md` → Data import.
+The admin page's **Import data** reads JSON files named `jawdatrace-import*.json` or `jawdatrace-export*.json` (files from **Export data**) that are attached to a Jira issue in the target project. Files are imported in name order. Each file is at most 10 MB and 100,000 entries; split larger exports. The runbook is in `docs/OPERATIONS.md` → Data import.
 
 The issues themselves (Tests, Test Sets, Test Plans, Test Executions) must already exist in Jira, with jawdatrace's issue type names. The file only carries the data jawdatrace keeps outside Jira's own fields.
 
@@ -44,7 +44,7 @@ All issue references are **numeric Jira issue ids** (strings or numbers), not ke
 | | `plan` | Optional Test Plan. |
 | | `environment` | Optional free text, up to 100 characters. |
 | | `tests` | The Execution's Tests, in order. |
-| `runs` | `id` | 1–48 letters, digits or `. _ : -`, unique per run **and state** in the source tool. Importing the same `id` again is a no-op. |
+| `runs` | `id` | 1–48 letters, digits or `. _ : -`, unique per run **and state** in the source tool. Importing the same `id` again is a no-op. A UUID (as written by **Export data**) is kept as the run's own id, so importing an export into the site it came from adds nothing. |
 | | `test`, `execution` | The Test, and the optional Test Execution (none means an ad-hoc run). A run also makes the Test a member of its Execution. |
 | | `status` | `PASS`, `FAIL`, `BLOCKED` or `EXECUTING`. Tests that were never run have no run; list them in the Execution's `tests` instead. |
 | | `executedBy` | Optional Atlassian account id; defaults to the admin who started the import. |

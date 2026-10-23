@@ -29,6 +29,7 @@ import { ErrorBanner, IssueLink, Loading, StatusLozenge, StatusSummary, formatDa
 import { createLink, deleteLink, getIssueLinks, getTestSetMembers, linkedIssues, searchIssuesOfType, toRow } from './shared/jira';
 import ScopePicker from './shared/ScopePicker';
 import { useStatuses } from './shared/useStatuses';
+import { LicenseGate } from './shared/LicenseGate';
 
 const growStyle = xcss({ flexGrow: 1 });
 
@@ -238,4 +239,8 @@ function App() {
 }
 
 // No React.StrictMode: it runs effects twice in development, doubling Jira requests.
-ForgeReconciler.render(<App />);
+ForgeReconciler.render(
+  <LicenseGate>
+    <App />
+  </LicenseGate>
+);

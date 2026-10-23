@@ -31,6 +31,7 @@ import { createLink, deleteLink, getIssueLinks, linkedIssues, toRow } from './sh
 import ScopePicker from './shared/ScopePicker';
 import TestPicker from './shared/TestPicker';
 import { useStatuses } from './shared/useStatuses';
+import { LicenseGate } from './shared/LicenseGate';
 
 // Jira has no bulk "create links" endpoint, so adding is one request per Test;
 // cap it to keep a single click cheap and predictable.
@@ -179,4 +180,8 @@ function App() {
 }
 
 // No React.StrictMode: it runs effects twice in development, doubling Jira requests.
-ForgeReconciler.render(<App />);
+ForgeReconciler.render(
+  <LicenseGate>
+    <App />
+  </LicenseGate>
+);
