@@ -42,6 +42,24 @@ describe('selectLatestRuns', () => {
     expect(sqlCalls[0].params).toEqual(['1', '5']);
   });
 
+  it('filters the latest scope by environment, as a bound parameter', async () => {
+    await selectLatestRuns(['1'], { kind: 'latest', environment: 'iOS' });
+    expect(sqlCalls[0].query).toContain('e.environment = ?');
+    expect(sqlCalls[0].query).not.toContain('plan_issue_id = ?');
+    expect(sqlCalls[0].params).toEqual(['1', 'iOS']);
+  });
+
+  it('ignores the environment in execution scope', async () => {
+    await selectLatestRuns(['1'], { kind: 'execution', id: '5', environment: 'iOS' });
+    expect(sqlCalls[0].query).not.toContain('e.environment = ?');
+    expect(sqlCalls[0].params).toEqual(['1', '5']);
+  });
+
+  it('does not filter by environment when none is given', async () => {
+    await selectLatestRuns(['1'], { kind: 'latest', environment: null });
+    expect(sqlCalls[0].query).not.toContain('e.environment = ?');
+  });
+
   it('ranks runs per Test and environment', async () => {
     await selectLatestRuns(['1'], { kind: 'latest' });
     expect(sqlCalls[0].query).toContain("PARTITION BY r.test_issue_id, COALESCE(e.environment, '')");

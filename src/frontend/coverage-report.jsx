@@ -315,6 +315,7 @@ function TestsTab({ projectKey, scope }) {
 function App() {
   const context = useProductContext();
   const projectKey = context?.extension?.project?.key;
+  const projectId = context?.extension?.project?.id ? String(context.extension.project.id) : undefined;
   const [tab, setTab] = useState(0);
   const [scope, setScope] = useState({ kind: SCOPE.LATEST });
 
@@ -323,7 +324,7 @@ function App() {
 
   return (
     <Stack space="space.200">
-      <ScopePicker projectKey={projectKey} onChange={setScope} />
+      <ScopePicker projectKey={projectKey} projectId={projectId} onChange={setScope} />
       <Tabs id="report-tabs" selected={tab} onChange={setTab}>
         <TabList>
           <Tab>Stories</Tab>

@@ -123,7 +123,13 @@ export async function getExecution(payload) {
   // One bulk request both filters by visibility and returns the table details.
   const details = await fetchVisibleTests(memberIds);
   const visibleIds = memberIds.filter((id) => details.has(id));
-  const statuses = await statusesForVisibleTests(visibleIds, { kind: SCOPE.EXECUTION, id: executionIssueId });
+  // Inside one Execution the newest run is the Test's current state (one
+  // current run per Test and execution), so a re-run shows as EXECUTING.
+  const statuses = await statusesForVisibleTests(visibleIds, {
+    kind: SCOPE.EXECUTION,
+    id: executionIssueId,
+    finalPrecedence: false,
+  });
 
   const [plan] = execution?.plan_issue_id ? await describeVisibleIssues([execution.plan_issue_id]) : [];
   const counts = countStatuses(visibleIds, statuses);

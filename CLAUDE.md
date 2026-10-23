@@ -54,7 +54,9 @@ Link direction is easy to get backwards. When you create a link, the `inwardIssu
 
 Status logic (`src/shared/status.js`, shared by the UI and resolvers):
 - Statuses are `EXECUTING` (not final), `PASS`, `FAIL` and `BLOCKED`. A Test with no run is `TODO`.
-- A Test's status in a scope is worked out per **environment** first: the latest final run, unless a newer `EXECUTING` run exists (`resolveDisplayStatus`). The environments are then combined with the worst result winning: FAIL > BLOCKED > EXECUTING > PASS (`combineEnvironmentStatuses`). A later Android pass must never hide an iOS failure. Ad-hoc runs count as their own environment.
+- A Test's status in a scope is worked out per **environment** first: the latest final run, or `EXECUTING` if there is no final run yet (`resolveDisplayStatus`). The environments are then combined with the worst result winning: FAIL > BLOCKED > EXECUTING > PASS (`combineEnvironmentStatuses`). A later Android pass must never hide an iOS failure. Ad-hoc runs count as their own environment.
+- A final result has precedence over a newer `EXECUTING` re-run by default. This is `finalPrecedence` in the scope, and the scope picker has a checkbox for it. With it off, or in the Execution panel (which turns it off), a newer `EXECUTING` re-run wins.
+- Scopes can filter by environment. Ad-hoc runs then drop out.
 - The overall status is NOK if anything failed, otherwise INCOMPLETE, otherwise OK.
 - SQL computes the latest runs for many Tests in one statement (`selectLatestRuns`, using `ROW_NUMBER()`).
 

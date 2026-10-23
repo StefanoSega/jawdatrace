@@ -117,7 +117,8 @@ export async function selectRunsPage(testIssueId, cursor, pageSize) {
  * later pass on Android). Ad-hoc runs (no execution) form their own bucket.
  *
  * @param {string[]} testIssueIds - already permission-filtered
- * @param {{ kind: 'latest' | 'plan' | 'execution', id?: string, environment?: string }} scope
+ * @param {{ kind: 'latest' | 'plan' | 'execution', id?: string, environment?: string | null }} scope
+ *   environment applies to the latest and plan scopes (an execution has one environment already)
  */
 export async function selectLatestRuns(testIssueIds, scope) {
   if (testIssueIds.length === 0) return [];
@@ -129,10 +130,12 @@ export async function selectLatestRuns(testIssueIds, scope) {
   } else if (scope.kind === 'plan') {
     scopeWhere = 'AND e.plan_issue_id = ?';
     params.push(scope.id);
-    if (scope.environment) {
-      scopeWhere += ' AND e.environment = ?';
-      params.push(scope.environment);
-    }
+  }
+  // Environment filter for the latest and plan scopes. Ad-hoc runs have no
+  // execution row (e.* is NULL), so they drop out when a filter is set.
+  if (scope.environment && scope.kind !== 'execution') {
+    scopeWhere += ' AND e.environment = ?';
+    params.push(scope.environment);
   }
   return query(
     `SELECT test_issue_id, env, status, executed_at, executed_by, rn_any, rn_final

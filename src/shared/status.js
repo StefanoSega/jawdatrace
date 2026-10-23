@@ -43,14 +43,24 @@ export function isFinalStatus(status) {
 
 /**
  * Pick the status to display for a Test in a "plan" or "latest" scope.
- * The SQL layer returns the latest final run and (separately) whether a
- * non-final EXECUTING run is newer than it. The view keeps
- * showing EXECUTING until a final result is recorded.
+ * The SQL layer returns the latest final run and (separately) the latest run
+ * of any status, which may be a non-final EXECUTING run.
+ *
+ * Two behaviours, set by the scope picker's "Final statuses have precedence over
+ * non-final" checkbox:
+ *  - finalPrecedence = true (the default): once a Test has a
+ *    final result (PASS / FAIL / BLOCKED), that result is shown even if a
+ *    newer re-run is still EXECUTING. EXECUTING only shows when there is no
+ *    final result yet.
+ *  - finalPrecedence = false: a newer EXECUTING re-run replaces the final
+ *    result, so the view shows that the Test is being re-tested right now.
  *
  * @param {{ status: string, executedAt: string } | undefined} latestFinal
  * @param {{ status: string, executedAt: string } | undefined} latestAny
+ * @param {{ finalPrecedence?: boolean }} [options]
  */
-export function resolveDisplayStatus(latestFinal, latestAny) {
+export function resolveDisplayStatus(latestFinal, latestAny, { finalPrecedence = true } = {}) {
+  if (latestFinal && finalPrecedence) return latestFinal;
   if (latestAny && latestAny.status === RUN_STATUS.EXECUTING) {
     if (!latestFinal || new Date(latestAny.executedAt) > new Date(latestFinal.executedAt)) {
       return latestAny;

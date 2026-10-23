@@ -133,6 +133,7 @@ function App() {
   const context = useProductContext();
   const issueId = context?.extension?.issue?.id ? String(context.extension.issue.id) : null;
   const projectKey = context?.extension?.project?.key;
+  const projectId = context?.extension?.project?.id ? String(context.extension.project.id) : undefined;
 
   const [coverage, setCoverage] = useState(null);
   const [error, setError] = useState(null);
@@ -172,7 +173,7 @@ function App() {
   return (
     <Stack space="space.200">
       <ErrorBanner error={error || statusError} />
-      <ScopePicker projectKey={projectKey} onChange={setScope} />
+      <ScopePicker projectKey={projectKey} projectId={projectId} onChange={setScope} />
       <StatusSummary counts={counts} overall={overallStatus(counts)} />
       {coverage?.truncated && <Text>Only the first 500 Tests from linked Test Sets are shown.</Text>}
       <DynamicTable
